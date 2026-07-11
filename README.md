@@ -45,4 +45,4 @@ code / schémas / routes en anglais**.
 
 ## Licence
 
-À définir avant la publication (MIT ou AGPL-3.0).
+[MIT](LICENSE)
