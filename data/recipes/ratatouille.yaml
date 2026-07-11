@@ -1,0 +1,36 @@
+# Recette d'exemple — documente le format de seed (contrat public, cf. ADR-0003).
+#
+# - `unit` ∈ { g, kg, ml, l, piece }
+# - `photo` : chemin relatif à ce dossier ou URL — optionnel dans le seed.
+# - Import en DB : `import` (upsert idempotent) ; export inverse : `export`.
+
+title: Ratatouille
+prep_time_min: 25
+cook_time_min: 45
+photo: ~
+
+ingredients:
+  - name: courgette
+    quantity: 600
+    unit: g
+  - name: aubergine
+    quantity: 600
+    unit: g
+  - name: poivron
+    quantity: 320
+    unit: g
+  - name: tomate
+    quantity: 720
+    unit: g
+  - name: oignon
+    quantity: 220
+    unit: g
+  - name: gousse d'ail
+    quantity: 3
+    unit: piece
+  - name: huile d'olive
+    quantity: 60
+    unit: ml
+  - name: thym
+    quantity: 1
+    unit: piece

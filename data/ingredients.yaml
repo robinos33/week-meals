@@ -1,0 +1,97 @@
+# Référentiel des ingrédients — poids moyens par unité.
+#
+# Utilisé par la génération de liste de courses pour convertir les grammages
+# en unités achetables : 600 g de courgettes → 3 courgettes (arrondi supérieur).
+#
+# - `avg_weight_g`  : poids moyen d'une pièce, en grammes.
+# - `countable: true` : l'ingrédient s'achète et s'affiche toujours en pièces
+#   (œufs…) — jamais reconverti en grammes.
+# - Les ingrédients SANS entrée ici restent affichés tels quels (g, kg, mL, L) :
+#   farine, lait, huile… n'ont pas leur place dans ce fichier.
+# - `category` sert au regroupement des articles dans la liste de courses.
+#
+# Fichier versionné : seedé en DB au déploiement (upsert par `name`).
+
+version: 1
+
+ingredients:
+  # Légumes
+  - name: tomate
+    category: legumes
+    avg_weight_g: 120
+  - name: tomate cerise
+    category: legumes
+    avg_weight_g: 15
+  - name: courgette
+    category: legumes
+    avg_weight_g: 250
+  - name: aubergine
+    category: legumes
+    avg_weight_g: 300
+  - name: poivron
+    category: legumes
+    avg_weight_g: 160
+  - name: oignon
+    category: legumes
+    avg_weight_g: 110
+  - name: échalote
+    category: legumes
+    avg_weight_g: 40
+  - name: gousse d'ail
+    category: legumes
+    avg_weight_g: 7
+    countable: true
+  - name: carotte
+    category: legumes
+    avg_weight_g: 125
+  - name: pomme de terre
+    category: legumes
+    avg_weight_g: 170
+  - name: patate douce
+    category: legumes
+    avg_weight_g: 250
+  - name: concombre
+    category: legumes
+    avg_weight_g: 350
+  - name: brocoli
+    category: legumes
+    avg_weight_g: 400
+  - name: chou-fleur
+    category: legumes
+    avg_weight_g: 900
+  - name: poireau
+    category: legumes
+    avg_weight_g: 200
+  - name: champignon de Paris
+    category: legumes
+    avg_weight_g: 25
+  - name: salade
+    category: legumes
+    avg_weight_g: 350
+    countable: true
+  - name: avocat
+    category: legumes
+    avg_weight_g: 200
+    countable: true
+
+  # Fruits
+  - name: citron
+    category: fruits
+    avg_weight_g: 100
+    countable: true
+  - name: pomme
+    category: fruits
+    avg_weight_g: 150
+  - name: banane
+    category: fruits
+    avg_weight_g: 120
+    countable: true
+  - name: orange
+    category: fruits
+    avg_weight_g: 180
+
+  # Crèmerie
+  - name: œuf
+    category: cremerie
+    avg_weight_g: 55
+    countable: true
