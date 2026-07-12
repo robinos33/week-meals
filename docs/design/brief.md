@@ -1,5 +1,12 @@
 # Brief design — Week Meals
 
+> **Direction retenue : « Cantine ».** Après comparaison de deux pistes sur la
+> [maquette](https://claude.ai/design/p/b3bc9702-d396-4cd4-abca-90c2be9641b2?file=Week+Meals.dc.html&via=share),
+> on part sur la direction **Cantine** : vert potager, style net et lisible,
+> barre d'onglets basse pleine largeur. La piste « Marché » (terracotta,
+> cartes rondes, navigation flottante) est écartée. Titres serif (Fraunces
+> léger) + texte sans-serif ; conception en clair, dark mode en bonus.
+
 ## Le produit
 
 PWA mobile-first pour un foyer (2 personnes) : gérer ses recettes, planifier
