@@ -39,17 +39,21 @@ Service de domaine **pur** (zéro I/O, trivialement testable) :
 
 ## Architecture du code
 
-Monorepo, clean architecture. Côté Rust, **une crate par couche** : la crate
-`domain` n'a physiquement aucune dépendance vers SQLx/Axum — la séparation est
-opposable par le compilateur.
+Monorepo, **découpage vertical par domaine** ([ADR-0005](adr/0005-decoupage-vertical-par-domaine.md)).
+Côté Rust, chaque domaine métier est une **crate** qui porte ses propres couches
+(`domain` / `application` / `infrastructure` / `presentation`) sous forme de
+modules internes. Un `kernel` pur héberge les types transverses ; le binaire
+`server` compose les routers de chaque domaine.
 
 ```
 week-meals/
 ├── api/                     # Rust — workspace
-│   ├── domain/              # Entités, VO (Quantity, Unit), traits repos, services purs
-│   ├── application/         # Use cases : Command/Query + Handler + Response
-│   ├── infrastructure/      # Repos SQLx, client R2, config, seed
-│   └── presentation/        # Routes Axum, DTO, extractors d'auth
+│   ├── kernel/              # noyau pur, partagé (VO communs, IDs, erreurs)
+│   ├── auth/                # authentification, foyer, invitations
+│   ├── recipes/             # recettes (CRUD, photos, import/export)
+│   ├── meal-plan/           # calendrier midi/soir
+│   ├── shopping-list/       # liste + conversion grammes→unités (cœur métier)
+│   └── server/              # binaire HTTP (Axum), compose les domaines
 ├── web/                     # React + Vite + TS, PWA
 ├── data/
 │   ├── ingredients.yaml     # référentiel poids moyens (versionné)
@@ -59,12 +63,25 @@ week-meals/
     └── design/
 ```
 
-Conventions (héritées du pattern ADR — Action → Domain → Response) :
+Chaque crate de domaine s'organise de la même façon (modules internes) :
+
+```
+recipes/src/
+├── domain/          # entités, VO, traits de repository, services purs
+├── application/     # use cases : commands (écritures) + queries (lectures)
+├── infrastructure/  # implémentations (repos SQLx, adapters)
+└── presentation/    # routes Axum, DTO
+```
+
+Conventions (pattern Action → Domain → Response) :
 
 - Un controller/route = une action, qui appelle un **Handler**.
 - Le Handler retourne toujours un **Response object**, jamais d'exception qui
   remonte à la présentation.
-- Interfaces (traits) dans `domain`, implémentations dans `infrastructure`.
+- Traits de repository déclarés dans `domain`, implémentés dans `infrastructure`.
+- **Règle de couches (par convention)** : le module `domain` reste pur — il
+  n'importe ni SQLx ni Axum. Non opposable par le compilateur au sein d'une
+  crate ; garantie par la revue.
 
 ### Recettes : DB + seed versionné ([ADR-0003](adr/0003-recettes-db-plus-seed.md))
 

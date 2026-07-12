@@ -3,7 +3,7 @@
 .env.local
 
 # Rust
-/target/
+target/
 
 # Node
 node_modules/

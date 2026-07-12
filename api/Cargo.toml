@@ -1,0 +1,46 @@
+# Workspace de l'API Week Meals — découpage vertical par domaine.
+#
+# Chaque domaine métier est une crate qui porte SES PROPRES couches
+# (domain / application / infrastructure / presentation) sous forme de
+# modules internes. Un `kernel` pur héberge les types transverses ; le
+# binaire `server` compose les routers de chaque domaine.
+#
+#   kernel          → (rien)            noyau pur, partagé
+#   auth            → kernel            authentification, foyer, invitations
+#   recipes         → kernel            recettes (CRUD, photos, import/export)
+#   meal-plan       → kernel            calendrier midi/soir
+#   shopping-list   → kernel            liste + service de conversion (cœur métier)
+#   server          → kernel + domaines binaire HTTP (Axum), bootstrap
+#
+# Règle de couches (enforcée par convention) : le module `domain` de chaque
+# crate reste pur — il n'importe ni SQLx ni Axum. Voir ADR-0005.
+
+[workspace]
+resolver = "2"
+members = ["kernel", "auth", "recipes", "meal-plan", "shopping-list", "server"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+# Crates internes
+kernel = { path = "kernel" }
+auth = { path = "auth" }
+recipes = { path = "recipes" }
+meal-plan = { path = "meal-plan" }
+shopping-list = { path = "shopping-list" }
+
+# Dépendances externes partagées
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower = "0.5"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
