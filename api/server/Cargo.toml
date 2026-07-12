@@ -1,0 +1,21 @@
+[package]
+name = "server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+kernel = { workspace = true }
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Les domaines seront ajoutés ici quand ils exposeront un router :
+# recipes = { workspace = true } etc.
+
+[dev-dependencies]
+tower = { workspace = true, features = ["util"] }
