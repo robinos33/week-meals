@@ -13,7 +13,7 @@ référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredien
 ## Fonctionnalités cibles
 
 - 📖 **Recettes** — CRUD complet : photo, titre, temps de préparation/cuisson,
-  ingrédients (quantité + unité : g, kg, mL, L ou pièces)
+  ingrédients (quantité + unité : g, kg, mL, L ou pièces) et étapes de préparation
 - 📅 **Semaine** — calendrier 7 jours × 2 créneaux (midi/soir), on y place les recettes
 - 🛒 **Liste de courses** — générée depuis une plage de jours du calendrier,
   éditable, cochable en magasin (UX inspirée de Google Keep), **fonctionne hors-ligne**

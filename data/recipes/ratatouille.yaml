@@ -2,6 +2,7 @@
 #
 # - `unit` ∈ { g, kg, ml, l, piece }
 # - `photo` : chemin relatif à ce dossier ou URL — optionnel dans le seed.
+# - `steps` : étapes de préparation, liste ordonnée de texte — optionnel.
 # - Import en DB : `import` (upsert idempotent) ; export inverse : `export`.
 
 title: Ratatouille
@@ -34,3 +35,9 @@ ingredients:
   - name: thym
     quantity: 1
     unit: piece
+
+steps:
+  - Émincer l'oignon et l'ail, les faire revenir à l'huile d'olive dans une cocotte.
+  - Couper courgette, aubergine et poivron en dés ; les ajouter et faire suer 10 min.
+  - Ajouter les tomates concassées et le thym, saler et poivrer.
+  - Couvrir et laisser mijoter à feu doux 45 min en remuant de temps en temps.

@@ -60,8 +60,9 @@ en haut, bouton flottant « + » pour créer. Action rapide sur une carte :
 ### 3. Détail / édition de recette
 
 Photo en héro, titre, temps de prépa et de cuisson, liste d'ingrédients
-(quantité + unité : g, kg, mL, L ou pièces). Édition inline des
-ingrédients (pas de formulaire-tunnel).
+(quantité + unité : g, kg, mL, L ou pièces) et section **Préparation**
+(étapes numérotées). Édition inline des ingrédients *et* des étapes (pas
+de formulaire-tunnel).
 
 ### 4. Semaine (onglet 2)
 

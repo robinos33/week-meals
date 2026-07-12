@@ -16,7 +16,8 @@ et faire les courses sans friction. Deux moments d'usage clés :
   données sont scopées au foyer. L'app est donc multi-foyers *by design*, sans
   travail supplémentaire pour les self-hosters.
 - **User** — pseudo + mot de passe (Argon2id). Aucun email. Voir [ADR-0002](adr/0002-auth-sans-email.md).
-- **Recipe** — titre, photo, temps prépa/cuisson, ingrédients (`quantity + unit`).
+- **Recipe** — titre, photo, temps prépa/cuisson, ingrédients (`quantity + unit`)
+  et **étapes de préparation** (`steps` : liste ordonnée de texte).
   Unités : `g`, `kg`, `ml`, `l`, `piece`.
 - **MealPlan** — calendrier : jour × créneau (`lunch` / `dinner`) → recette.
 - **ShoppingList** — générée depuis une plage de dates du calendrier + ajouts
