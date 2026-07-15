@@ -6,3 +6,7 @@
 //! `kernel` n'a aucune dépendance d'infrastructure et ne dépend d'aucun
 //! domaine ; ce sont les domaines qui dépendent de `kernel`. Le contenu
 //! sera ajouté au fil des jalons.
+
+mod quantity;
+
+pub use quantity::{Dimension, Quantity, QuantityError, Unit};
