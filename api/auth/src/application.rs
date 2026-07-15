@@ -4,8 +4,5 @@
 //! Handler retourne toujours un objet Response, jamais une exception qui
 //! remonterait à la présentation.
 
-/// Écritures : Command + Handler + Response.
-pub mod commands {}
-
-/// Lectures : Query + Handler + Response.
-pub mod queries {}
+/// Écritures / actions : Command + Handler + Response.
+pub mod commands;

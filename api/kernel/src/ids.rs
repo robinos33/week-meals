@@ -63,8 +63,18 @@ id_type! {
 }
 
 id_type! {
+    /// Identifiant d'un utilisateur (membre d'un foyer).
+    UserId
+}
+
+id_type! {
     /// Identifiant d'une recette.
     RecipeId
+}
+
+id_type! {
+    /// Identifiant d'un lien d'invitation.
+    InvitationId
 }
 
 #[cfg(test)]

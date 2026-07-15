@@ -12,6 +12,6 @@ mod ids;
 mod quantity;
 mod repository;
 
-pub use ids::{HouseholdId, RecipeId};
+pub use ids::{HouseholdId, InvitationId, RecipeId, UserId};
 pub use quantity::{Dimension, Quantity, QuantityError, Unit};
 pub use repository::RepositoryError;

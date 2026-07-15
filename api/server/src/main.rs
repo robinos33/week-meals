@@ -3,9 +3,22 @@
 use std::net::SocketAddr;
 
 use tokio::net::TcpListener;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL doit être défini");
+    let pool = server::pool(&database_url).expect("configuration du pool Postgres");
+    let session_store = server::init_session_store(&pool)
+        .await
+        .expect("migration du store de sessions");
+    let config = server::Config::from_env();
+
     let port = std::env::var("PORT")
         .ok()
         .and_then(|p| p.parse().ok())
@@ -13,8 +26,8 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(addr).await.expect("bind du listener TCP");
 
-    println!("Week Meals API à l'écoute sur http://{addr}");
-    axum::serve(listener, server::app())
+    tracing::info!("Week Meals API à l'écoute sur http://{addr}");
+    axum::serve(listener, server::app(pool, session_store, &config))
         .await
         .expect("démarrage du serveur Axum");
 }

@@ -9,3 +9,17 @@ workspace = true
 
 [dependencies]
 kernel = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+argon2 = "0.5.3"
+# Active `OsRng` (sel aléatoire) : argon2 réexporte ce `password_hash`.
+password-hash = { version = "0.5", features = ["getrandom"] }
+# 0.14 pour rester aligné sur `tower-sessions-sqlx-store` (store Postgres).
+tower-sessions = "0.14"
+axum = { workspace = true, features = ["json"] }
+serde.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
