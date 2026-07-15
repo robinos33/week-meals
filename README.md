@@ -32,6 +32,49 @@ référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredien
 
 Le détail des choix et leurs alternatives : [docs/adr/](docs/adr/).
 
+## Dev local / self-host
+
+Environnement reproductible : PostgreSQL en conteneur + migrations SQLx.
+
+### Prérequis
+
+- [Docker](https://docs.docker.com/get-docker/) (avec `docker compose`)
+- [`sqlx-cli`](https://crates.io/crates/sqlx-cli) pour jouer les migrations :
+  ```sh
+  cargo install sqlx-cli --no-default-features --features rustls,postgres
+  ```
+
+### Démarrage
+
+```sh
+# 1. Configuration — copier l'exemple et ajuster si besoin
+cp .env.example .env
+
+# 2. Base de données
+docker compose up -d          # Postgres sur localhost:5432 (POSTGRES_PORT pour changer)
+
+# 3. Migrations
+sqlx migrate run --source api/migrations
+```
+
+Avant tout déploiement, remplacer les valeurs `change-me` de `.env`
+(`SESSION_SECRET`, `BOOTSTRAP_INVITE_CODE`) — voir [ADR-0002](docs/adr/0002-auth-sans-email.md).
+
+### Workflow de migration
+
+Les migrations vivent dans [`api/migrations/`](api/migrations/), une par fichier
+`AAAAMMJJHHMMSS_description.sql`, appliquées dans l'ordre et suivies par SQLx
+(table `_sqlx_migrations`).
+
+```sh
+sqlx migrate add <description>          # nouvelle migration (préciser --source api/migrations)
+sqlx migrate run    --source api/migrations   # appliquer les migrations en attente
+sqlx migrate info   --source api/migrations   # état appliqué / en attente
+```
+
+> Les migrations sont **append-only** : ne jamais éditer une migration déjà
+> livrée, en ajouter une nouvelle.
+
 ## Documentation
 
 - [Plan & architecture](docs/plan.md) — modèle métier, structure du code, roadmap
