@@ -1,0 +1,13 @@
+# En-têtes Cloudflare Pages.
+
+# Le service worker et le manifest ne doivent jamais être servis « périmés » :
+# c'est ce qui permet à la mise à jour du SW d'être détectée rapidement.
+/sw.js
+  Cache-Control: no-cache
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Les assets sont hashés par Vite : cache immuable très long.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -1,0 +1,4 @@
+# SPA : toutes les routes inconnues retombent sur l'app (routing client
+# TanStack Router). Cloudflare Pages sert d'abord les fichiers existants
+# (assets, sw.js, manifest), donc seul le vrai « deep link » est réécrit.
+/*    /index.html    200

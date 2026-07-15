@@ -1,0 +1,6 @@
+# Configuration Cloudflare Pages pour `wrangler pages deploy`.
+# Le répertoire racine du projet Pages est `web/` ; la sortie de build est
+# `web/dist` (relative à ce fichier).
+name = "week-meals"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "dist"
