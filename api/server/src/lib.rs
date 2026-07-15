@@ -1,18 +1,137 @@
 //! Crate `server` — couche HTTP (Axum) et composition de l'application.
 //!
-//! Le binaire monte ici les sous-routers exposés par chaque domaine. Le
-//! routeur est construit par [`app`] afin que les tests d'intégration
-//! puissent monter l'application sans ouvrir de socket réseau.
+//! Le binaire monte ici les sous-routers exposés par chaque domaine, derrière
+//! une couche de sessions cookie (`tower-sessions`, store Postgres) et une
+//! couche CORS pour le front (origine distincte en prod : Pages ↔ Scaleway).
+//!
+//! [`app`] construit le routeur à partir d'un `PgPool` afin que les tests
+//! d'intégration puissent l'assembler sans ouvrir de socket (pool paresseux).
 
+use std::sync::Arc;
+
+use axum::http::{HeaderValue, Method};
 use axum::{routing::get, Json, Router};
 use serde::Serialize;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
+use tower_http::cors::CorsLayer;
+use tower_sessions::cookie::time::Duration;
+use tower_sessions::cookie::SameSite;
+use tower_sessions::{Expiry, SessionManagerLayer};
+use tower_sessions_sqlx_store::PostgresStore;
 
-/// Construit le routeur de l'application Week Meals.
+use auth::domain::password::Argon2Hasher;
+use auth::infrastructure::SqlxUserRepository;
+use auth::presentation::{self, AuthState};
+
+/// Configuration HTTP lue depuis l'environnement.
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Origine autorisée par CORS (front). Ex. `http://localhost:5173` en dev,
+    /// l'URL Pages en prod. Les cookies de session étant impliqués, CORS est
+    /// restreint à cette origine (pas de `*`).
+    pub web_origin: String,
+    /// `true` pour marquer le cookie `Secure` (HTTPS obligatoire) — activer en
+    /// prod. Faux en dev HTTP local.
+    pub secure_cookie: bool,
+    /// `SameSite` du cookie. `Lax` en dev (même site), `None` requis pour un
+    /// front et une API sur des domaines distincts (prod) — impose `Secure`.
+    pub same_site: SameSite,
+}
+
+impl Config {
+    /// Lit la configuration depuis l'environnement, avec des valeurs par défaut
+    /// adaptées au dev local.
+    #[must_use]
+    pub fn from_env() -> Self {
+        let web_origin =
+            std::env::var("WEB_ORIGIN").unwrap_or_else(|_| "http://localhost:5173".to_owned());
+        let secure_cookie = env_flag("SESSION_SECURE");
+        let same_site = match std::env::var("SESSION_SAME_SITE").as_deref() {
+            Ok("none") => SameSite::None,
+            Ok("strict") => SameSite::Strict,
+            _ => SameSite::Lax,
+        };
+        Self {
+            web_origin,
+            secure_cookie,
+            same_site,
+        }
+    }
+}
+
+/// Lit un booléen d'environnement (`1`/`true`/`yes`, insensible à la casse).
+fn env_flag(key: &str) -> bool {
+    matches!(
+        std::env::var(key).map(|v| v.to_lowercase()).as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
+/// Ouvre un pool Postgres (connexions établies à la demande).
 ///
-/// Au fil des jalons, chaque domaine y greffe son sous-router, p. ex. :
-/// `.merge(recipes::presentation::router())`.
-pub fn app() -> Router {
-    Router::new().route("/health", get(health))
+/// # Errors
+/// Remonte l'erreur SQLx si l'URL est invalide.
+pub fn pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
+    PgPoolOptions::new()
+        .max_connections(5)
+        .connect_lazy(database_url)
+}
+
+/// Construit le store de sessions et applique sa migration (table
+/// `tower_sessions.session`). À appeler une fois au démarrage.
+///
+/// # Errors
+/// Remonte l'erreur SQLx si la migration échoue.
+pub async fn init_session_store(pool: &PgPool) -> Result<PostgresStore, sqlx::Error> {
+    let store = PostgresStore::new(pool.clone());
+    store.migrate().await?;
+    Ok(store)
+}
+
+/// Construit le routeur complet de l'application Week Meals.
+///
+/// `session_store` est injecté (plutôt que reconstruit) pour que le démarrage
+/// puisse d'abord jouer sa migration ; les tests peuvent passer un store non
+/// migré tant qu'ils ne touchent pas la session.
+pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Router {
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_http_only(true)
+        .with_same_site(config.same_site)
+        .with_secure(config.secure_cookie)
+        .with_expiry(Expiry::OnInactivity(Duration::days(30)));
+
+    let cors = cors_layer(config);
+
+    let auth_state = AuthState {
+        users: Arc::new(SqlxUserRepository::new(pool.clone())),
+        hasher: Arc::new(Argon2Hasher::new()),
+    };
+
+    Router::new()
+        .route("/health", get(health))
+        .merge(presentation::router(auth_state))
+        .layer(session_layer)
+        .layer(cors)
+}
+
+/// Couche CORS restreinte à l'origine du front, cookies autorisés.
+fn cors_layer(config: &Config) -> CorsLayer {
+    let mut cors = CorsLayer::new()
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers([axum::http::header::CONTENT_TYPE])
+        .allow_credentials(true);
+
+    if let Ok(origin) = HeaderValue::from_str(&config.web_origin) {
+        cors = cors.allow_origin(origin);
+    }
+    cors
 }
 
 /// Réponse du endpoint de santé.

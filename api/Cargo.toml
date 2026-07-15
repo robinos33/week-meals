@@ -41,6 +41,17 @@ tower = "0.5"
 uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
 thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "macros",
+    "migrate",
+] }
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
