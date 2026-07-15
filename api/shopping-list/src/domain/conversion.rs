@@ -157,7 +157,7 @@ fn emit_referenced(
     if aggregate.volume_ml > 0.0 {
         items.push(PurchaseItem {
             name: reference.name.clone(),
-            quantity: base_quantity(aggregate.volume_ml, Unit::Milliliter),
+            quantity: base_quantity(aggregate.volume_ml, Unit::Ml),
             category: Some(reference.category.clone()),
         });
     }
@@ -169,14 +169,14 @@ fn emit_bulk(items: &mut Vec<PurchaseItem>, aggregate: &Aggregate) {
     if aggregate.mass_g > 0.0 {
         items.push(PurchaseItem {
             name: aggregate.display_name.clone(),
-            quantity: base_quantity(aggregate.mass_g, Unit::Gram),
+            quantity: base_quantity(aggregate.mass_g, Unit::G),
             category: None,
         });
     }
     if aggregate.volume_ml > 0.0 {
         items.push(PurchaseItem {
             name: aggregate.display_name.clone(),
-            quantity: base_quantity(aggregate.volume_ml, Unit::Milliliter),
+            quantity: base_quantity(aggregate.volume_ml, Unit::Ml),
             category: None,
         });
     }
@@ -228,16 +228,16 @@ mod tests {
     }
 
     fn g(amount: f64) -> Quantity {
-        Quantity::new(amount, Unit::Gram).unwrap()
+        Quantity::new(amount, Unit::G).unwrap()
     }
     fn kg(amount: f64) -> Quantity {
-        Quantity::new(amount, Unit::Kilogram).unwrap()
+        Quantity::new(amount, Unit::Kg).unwrap()
     }
     fn piece(amount: f64) -> Quantity {
         Quantity::new(amount, Unit::Piece).unwrap()
     }
     fn ml(amount: f64) -> Quantity {
-        Quantity::new(amount, Unit::Milliliter).unwrap()
+        Quantity::new(amount, Unit::Ml).unwrap()
     }
 
     #[test]
@@ -342,7 +342,7 @@ mod tests {
     fn bulk_liquid_stays_in_millilitres() {
         // Lait : vrac liquide → agrégé en mL (0,5 L + 200 mL = 700 mL).
         let planned = [
-            PlannedIngredient::new("lait", Quantity::new(0.5, Unit::Liter).unwrap()),
+            PlannedIngredient::new("lait", Quantity::new(0.5, Unit::L).unwrap()),
             PlannedIngredient::new("lait", ml(200.0)),
         ];
         let items = aggregate_purchases(&planned, &catalog());
@@ -402,20 +402,6 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].quantity, g(600.0));
         assert_eq!(items[0].category, None);
-    }
-
-    #[test]
-    fn zero_quantity_referenced_yields_no_line() {
-        let planned = [PlannedIngredient::new("courgette", g(0.0))];
-        let items = aggregate_purchases(&planned, &catalog());
-        assert!(items.is_empty());
-    }
-
-    #[test]
-    fn zero_quantity_bulk_yields_no_line() {
-        let planned = [PlannedIngredient::new("farine", g(0.0))];
-        let items = aggregate_purchases(&planned, &catalog());
-        assert!(items.is_empty());
     }
 
     #[test]

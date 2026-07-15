@@ -9,3 +9,9 @@ workspace = true
 
 # Noyau pur : aucune dépendance d'infrastructure.
 [dependencies]
+serde = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
