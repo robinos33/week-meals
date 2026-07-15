@@ -64,11 +64,7 @@ async fn login_me_logout_flow() {
     let hash = Argon2Hasher::new()
         .hash(&Password::new(password).unwrap())
         .unwrap();
-    let user = User::new(
-        household.id,
-        Username::new(username.clone()).unwrap(),
-        hash,
-    );
+    let user = User::new(household.id, Username::new(username.clone()).unwrap(), hash);
     SqlxUserRepository::new(pool.clone())
         .create(&user)
         .await

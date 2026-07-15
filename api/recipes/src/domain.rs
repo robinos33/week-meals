@@ -89,6 +89,39 @@ impl Recipe {
             steps,
         })
     }
+
+    /// Reconstitue une recette dont l'identifiant est connu — pour une mise à
+    /// jour (l'`id` est fourni par l'appelant) ou une lecture depuis la
+    /// persistance. Valide et nettoie le titre comme [`Recipe::new`].
+    ///
+    /// # Errors
+    /// Renvoie [`RecipeError::EmptyTitle`] si le titre est vide.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        id: RecipeId,
+        household_id: HouseholdId,
+        title: impl Into<String>,
+        prep_time_min: Option<u32>,
+        cook_time_min: Option<u32>,
+        photo: Option<String>,
+        ingredients: Vec<RecipeIngredient>,
+        steps: Vec<String>,
+    ) -> Result<Self, RecipeError> {
+        let title = title.into().trim().to_owned();
+        if title.is_empty() {
+            return Err(RecipeError::EmptyTitle);
+        }
+        Ok(Self {
+            id,
+            household_id,
+            title,
+            photo,
+            prep_time_min,
+            cook_time_min,
+            ingredients,
+            steps,
+        })
+    }
 }
 
 /// Violation d'un invariant du domaine `recipes`.
@@ -121,6 +154,14 @@ pub trait RecipeRepository: Send + Sync {
 
     /// Liste les recettes du foyer.
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<Recipe>, RepositoryError>;
+
+    /// Recherche les recettes du foyer dont le titre contient `query`
+    /// (insensible à la casse). Une requête vide équivaut à [`Self::list`].
+    async fn search(
+        &self,
+        household_id: HouseholdId,
+        query: &str,
+    ) -> Result<Vec<Recipe>, RepositoryError>;
 
     /// Met à jour une recette existante.
     ///

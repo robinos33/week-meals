@@ -23,6 +23,8 @@ use tower_sessions_sqlx_store::PostgresStore;
 use auth::domain::password::Argon2Hasher;
 use auth::infrastructure::SqlxUserRepository;
 use auth::presentation::{self, AuthState};
+use recipes::infrastructure::SqlxRecipeRepository;
+use recipes::presentation::RecipeState;
 
 /// Configuration HTTP lue depuis l'environnement.
 #[derive(Debug, Clone)]
@@ -107,10 +109,14 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
         users: Arc::new(SqlxUserRepository::new(pool.clone())),
         hasher: Arc::new(Argon2Hasher::new()),
     };
+    let recipe_state = RecipeState {
+        recipes: Arc::new(SqlxRecipeRepository::new(pool.clone())),
+    };
 
     Router::new()
         .route("/health", get(health))
         .merge(presentation::router(auth_state))
+        .merge(recipes::presentation::router(recipe_state))
         .layer(session_layer)
         .layer(cors)
 }

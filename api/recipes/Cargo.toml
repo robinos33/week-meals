@@ -9,5 +9,13 @@ workspace = true
 
 [dependencies]
 kernel = { workspace = true }
+auth = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+axum = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
