@@ -1,0 +1,112 @@
+/* Coquille, barre d'onglets et bandeaux — avec gestion des zones sûres. */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.app-shell__content {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 1rem) 1rem
+    calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 1.5rem);
+}
+
+/* Écran sans chrome (connexion) : pas de réserve pour la barre d'onglets. */
+.app-shell[data-chromeless="true"] .app-shell__content {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem);
+  display: flex;
+  align-items: center;
+}
+
+/* Accès Paramètres, coin haut-droit (respecte la zone sûre). */
+.app-shell__settings {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 0.5rem);
+  right: 0.6rem;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-target);
+  height: var(--tap-target);
+  color: var(--color-muted);
+  background: color-mix(in srgb, var(--color-bg) 70%, transparent);
+  border-radius: 50%;
+}
+
+/* --- Barre d'onglets ------------------------------------------------------ */
+
+.tabbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: space-around;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 20;
+}
+
+.tabbar__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--tabbar-height);
+  padding: 6px 0;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.tabbar__item[data-active="true"] {
+  color: var(--color-primary);
+}
+
+.tabbar__icon {
+  display: inline-flex;
+}
+
+/* --- Bandeaux (install / mise à jour) ------------------------------------- */
+
+.install-prompt,
+.reload-prompt {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 0.75rem);
+  z-index: 30;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+}
+
+.reload-prompt {
+  flex-wrap: wrap;
+}
+
+.install-prompt p {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+}
+
+.install-prompt__actions,
+.reload-prompt__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.install-prompt__actions .btn,
+.reload-prompt__actions .btn {
+  padding: 0 0.9rem;
+  min-height: 40px;
+}

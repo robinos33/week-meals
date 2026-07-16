@@ -1,0 +1,194 @@
+/* Styles des écrans « Cantine ». */
+
+.screen__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.screen__title {
+  font-size: 1.9rem;
+}
+
+.search {
+  position: relative;
+  margin-bottom: 1.25rem;
+}
+
+/* --- État vide sympathique ------------------------------------------------ */
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1.25rem;
+  color: var(--color-muted);
+}
+
+.empty-state__emoji {
+  font-size: 2.5rem;
+}
+
+.empty-state h2 {
+  margin: 0.75rem 0 0.35rem;
+  color: var(--color-text);
+  font-size: 1.25rem;
+}
+
+/* --- Bouton flottant « + » ------------------------------------------------ */
+
+.fab {
+  position: fixed;
+  right: 1.15rem;
+  bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 1rem);
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: 1.8rem;
+  line-height: 1;
+  box-shadow: var(--shadow-card);
+  z-index: 15;
+}
+
+/* --- Grille de recettes --------------------------------------------------- */
+
+.recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.recipe-card {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.recipe-card__photo {
+  aspect-ratio: 4 / 3;
+  background: var(--color-surface-2);
+  display: grid;
+  place-items: center;
+  font-size: 2rem;
+}
+
+.recipe-card__body {
+  padding: 0.7rem 0.8rem 0.9rem;
+}
+
+.recipe-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.recipe-card__time {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin-top: 0.15rem;
+}
+
+/* --- Calendrier de la semaine --------------------------------------------- */
+
+.week-day {
+  margin-bottom: 1rem;
+}
+
+.week-day__name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  color: var(--color-muted);
+  margin-bottom: 0.4rem;
+}
+
+.week-day__slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.slot {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  text-align: left;
+}
+
+.slot__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* --- Liste de courses ----------------------------------------------------- */
+
+.quick-add {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+
+/* --- Paramètres ----------------------------------------------------------- */
+
+.settings-section {
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.settings-section h2 {
+  font-size: 1.05rem;
+  margin-bottom: 0.75rem;
+}
+
+/* --- Connexion ------------------------------------------------------------ */
+
+.login {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.login__brand {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.login__brand h1 {
+  font-size: 2.3rem;
+}
+
+.login form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.field label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.form-error {
+  color: var(--color-danger);
+  font-size: 0.9rem;
+  min-height: 1.2em;
+}

@@ -1,0 +1,43 @@
+/*
+ * Design tokens « Cantine » — vert potager, net et lisible.
+ *
+ * Conception en clair (cf. brief) ; le dark mode arrivera dans un second temps.
+ * Contrastes visés WCAG AA (≥ 4.5:1 texte normal) : texte/bg, texte muet/bg,
+ * on-primary/primary.
+ */
+
+:root {
+  /* Surfaces */
+  --color-bg: #faf7f0; /* crème */
+  --color-surface: #ffffff;
+  --color-surface-2: #f2ede1;
+  --color-border: #e5decb;
+
+  /* Texte */
+  --color-text: #1c2a22; /* vert-ardoise profond */
+  --color-muted: #515f56;
+
+  /* Marque — vert potager */
+  --color-primary: #2f6a45; /* fond de bouton : AA avec blanc */
+  --color-primary-strong: #245135;
+  --color-primary-tint: #e4efe7; /* surface verte claire (chips) */
+  --color-on-primary: #ffffff;
+
+  /* Accent chaleureux (appétit) — usage parcimonieux */
+  --color-accent: #b45a2b;
+  --color-danger: #b23b26;
+
+  /* Rayons, ombres, typographie */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --shadow-card: 0 1px 2px rgba(28, 42, 34, 0.06), 0 6px 16px rgba(28, 42, 34, 0.08);
+  --font-serif: "Fraunces Variable", "Fraunces", Georgia, "Times New Roman", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Cible tactile minimale (accessibilité). */
+  --tap-target: 44px;
+  --tabbar-height: 60px;
+
+  color-scheme: light;
+}
