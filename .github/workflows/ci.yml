@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un nouveau push sur la même ref annule le run précédent devenu inutile.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: API (fmt + clippy + tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain Rust (stable + rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache des dépendances Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy (warnings = erreurs)
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      # Le runner démarre sans image en cache : un pull à froid depuis le test
+      # peut dépasser le délai de démarrage de Testcontainers. On le sort du
+      # chemin critique pour rendre le job déterministe.
+      - name: Pré-télécharge l'image Postgres
+        run: docker pull postgres:16-alpine
+
+      # Les tests d'intégration démarrent un Postgres réel via Testcontainers ;
+      # le runner ubuntu-latest fournit Docker par défaut.
+      - name: Tests (unitaires + intégration Testcontainers)
+        run: cargo test --workspace
+
+  # TODO(#3) — job `web` (npm : typecheck + build, et vitest quand des tests
+  # existeront). Volontairement absent tant que le front n'est pas sur `main` :
+  # il vit aujourd'hui sur la stack feat/24-pwa-cantine et n'a encore ni ESLint
+  # ni Vitest dans ses dépendances.
