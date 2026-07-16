@@ -1,27 +1,12 @@
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-
-/** Préférence de thème : suivre le système, ou forcer clair / sombre. */
-export type ThemePreference = "system" | "light" | "dark";
-
-const STORAGE_KEY = "week-meals.theme";
-
-interface ThemeContextValue {
-  /** Préférence choisie par l'utilisateur. */
-  preference: ThemePreference;
-  /** Thème effectivement appliqué (résolution de « system »). */
-  resolved: "light" | "dark";
-  /** Change la préférence (persistée). */
-  setPreference: (preference: ThemePreference) => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
+  STORAGE_KEY,
+  THEME_COLOR,
+  ThemeContext,
+  type ResolvedTheme,
+  type ThemeContextValue,
+  type ThemePreference,
+} from "./theme-context";
 
 function readStored(): ThemePreference {
   const value =
@@ -37,9 +22,13 @@ function systemPrefersDark(): boolean {
 }
 
 /**
- * Applique le thème « Cantine » : pose (ou retire) `data-theme` sur `<html>`
- * pour que la bascule prime sur `prefers-color-scheme`, et synchronise la
- * couleur de la barre système (`theme-color`).
+ * Applique le thème « Cantine » : pose le thème **résolu** dans `data-theme`
+ * sur `<html>` — seule source lue par les tokens (cf. `tokens.css`) — et
+ * synchronise la couleur de la barre système (`theme-color`).
+ *
+ * Le même calcul est fait par le script inline d'`index.html` avant le premier
+ * paint ; ce provider prend ensuite le relais. Les deux doivent rester d'accord
+ * sur la clé de stockage et les couleurs (partagées via `theme-context`).
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(readStored);
@@ -54,22 +43,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
-  const resolved: "light" | "dark" =
+  const resolved: ResolvedTheme =
     preference === "system" ? (systemDark ? "dark" : "light") : preference;
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (preference === "system") {
-      root.removeAttribute("data-theme");
-    } else {
-      root.setAttribute("data-theme", preference);
-    }
-    // Aligne la couleur de la barre d'état sur le fond du thème résolu.
-    const themeColor = resolved === "dark" ? "#1c2a22" : "#3f7d54";
+    // Toujours le thème résolu : « Système » n'est pas un état visuel, il se
+    // résout en clair ou sombre. Les tokens ne lisent que `data-theme`.
+    document.documentElement.setAttribute("data-theme", resolved);
     document
       .querySelectorAll('meta[name="theme-color"]')
-      .forEach((meta) => meta.setAttribute("content", themeColor));
-  }, [preference, resolved]);
+      .forEach((meta) => meta.setAttribute("content", THEME_COLOR[resolved]));
+  }, [resolved]);
 
   const setPreference = (next: ThemePreference) => {
     setPreferenceState(next);
@@ -86,13 +70,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
-}
-
-/** Accès au thème courant depuis les composants. */
-export function useTheme(): ThemeContextValue {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error("useTheme doit être utilisé dans un <ThemeProvider>");
-  }
-  return context;
 }

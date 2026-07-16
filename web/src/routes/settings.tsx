@@ -1,4 +1,4 @@
-import { useTheme, type ThemePreference } from "../theme/ThemeProvider";
+import { useTheme, type ThemePreference } from "../theme/theme-context";
 import "./screens.css";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
