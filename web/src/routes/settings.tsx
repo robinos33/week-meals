@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { api } from "../api/client";
 import { clearSession } from "../api/session";
 import { queryClient } from "../query";
-import { useTheme, type ThemePreference } from "../theme/ThemeProvider";
+import { useTheme, type ThemePreference } from "../theme/theme-context";
 import "./screens.css";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [

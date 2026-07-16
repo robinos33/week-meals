@@ -165,7 +165,7 @@
 }
 
 .segmented button {
-  min-height: 40px;
+  min-height: var(--tap-target);
   padding: 0 1rem;
   border: none;
   background: var(--color-surface);
