@@ -54,7 +54,7 @@ async fn login_me_logout_flow() {
     let config = Config::from_env();
 
     // Seed : un foyer + un utilisateur avec un mot de passe connu, pseudo unique.
-    let username = format!("robin_{}", uuid::Uuid::new_v4().simple());
+    let username = format!("robin_{}", &uuid::Uuid::new_v4().simple().to_string()[..24]);
     let password = "correct horse battery";
     let household = Household::new(HouseholdName::new("Chez nous").unwrap());
     SqlxHouseholdRepository::new(pool.clone())
@@ -64,11 +64,7 @@ async fn login_me_logout_flow() {
     let hash = Argon2Hasher::new()
         .hash(&Password::new(password).unwrap())
         .unwrap();
-    let user = User::new(
-        household.id,
-        Username::new(username.clone()).unwrap(),
-        hash,
-    );
+    let user = User::new(household.id, Username::new(username.clone()).unwrap(), hash);
     SqlxUserRepository::new(pool.clone())
         .create(&user)
         .await

@@ -58,14 +58,53 @@ pub struct Recipe {
     pub steps: Vec<String>,
 }
 
+/// Borne haute d'un temps de préparation / cuisson, en minutes.
+///
+/// Les temps sont persistés dans un `integer` Postgres (cf. ADR-0003 : la DB
+/// est la source de vérité) : au-delà, l'écriture violerait la contrainte
+/// `check (>= 0)` après troncature. On valide donc ici, pour que l'entrée
+/// hors bornes ressorte en `Invalid` (422) plutôt qu'en panne technique (500).
+pub const MAX_TIME_MIN: u32 = i32::MAX as u32;
+
 impl Recipe {
-    /// Construit une recette en validant ses invariants (titre non vide).
+    /// Construit une recette en validant ses invariants (titre non vide, temps
+    /// dans les bornes).
     ///
     /// Génère un nouvel identifiant. Le titre est nettoyé (trim).
     ///
     /// # Errors
-    /// Renvoie [`RecipeError::EmptyTitle`] si le titre est vide.
+    /// Voir [`Recipe::from_parts`].
     pub fn new(
+        household_id: HouseholdId,
+        title: impl Into<String>,
+        prep_time_min: Option<u32>,
+        cook_time_min: Option<u32>,
+        photo: Option<String>,
+        ingredients: Vec<RecipeIngredient>,
+        steps: Vec<String>,
+    ) -> Result<Self, RecipeError> {
+        Self::from_parts(
+            RecipeId::new(),
+            household_id,
+            title,
+            prep_time_min,
+            cook_time_min,
+            photo,
+            ingredients,
+            steps,
+        )
+    }
+
+    /// Reconstitue une recette dont l'identifiant est connu — pour une mise à
+    /// jour (l'`id` est fourni par l'appelant) ou une lecture depuis la
+    /// persistance. Valide et nettoie le titre comme [`Recipe::new`].
+    ///
+    /// # Errors
+    /// - [`RecipeError::EmptyTitle`] si le titre est vide ;
+    /// - [`RecipeError::TimeOutOfRange`] si un temps dépasse [`MAX_TIME_MIN`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts(
+        id: RecipeId,
         household_id: HouseholdId,
         title: impl Into<String>,
         prep_time_min: Option<u32>,
@@ -78,8 +117,15 @@ impl Recipe {
         if title.is_empty() {
             return Err(RecipeError::EmptyTitle);
         }
+        if [prep_time_min, cook_time_min]
+            .into_iter()
+            .flatten()
+            .any(|minutes| minutes > MAX_TIME_MIN)
+        {
+            return Err(RecipeError::TimeOutOfRange);
+        }
         Ok(Self {
-            id: RecipeId::new(),
+            id,
             household_id,
             title,
             photo,
@@ -100,6 +146,9 @@ pub enum RecipeError {
     /// Le nom d'un ingrédient ne peut pas être vide.
     #[error("ingredient name must not be empty")]
     EmptyIngredientName,
+    /// Un temps de préparation / cuisson dépasse la borne persistable.
+    #[error("recipe time must not exceed {MAX_TIME_MIN} minutes")]
+    TimeOutOfRange,
 }
 
 /// Port de persistance des recettes. Implémenté dans la couche infrastructure
@@ -121,6 +170,14 @@ pub trait RecipeRepository: Send + Sync {
 
     /// Liste les recettes du foyer.
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<Recipe>, RepositoryError>;
+
+    /// Recherche les recettes du foyer dont le titre contient `query`
+    /// (insensible à la casse). Une requête vide équivaut à [`Self::list`].
+    async fn search(
+        &self,
+        household_id: HouseholdId,
+        query: &str,
+    ) -> Result<Vec<Recipe>, RepositoryError>;
 
     /// Met à jour une recette existante.
     ///
@@ -168,6 +225,36 @@ mod tests {
         assert_eq!(recipe.title, "Ratatouille");
         assert_eq!(recipe.ingredients.len(), 2);
         assert_eq!(recipe.steps.len(), 2);
+    }
+
+    #[test]
+    fn rejects_a_time_beyond_the_persistable_range() {
+        let error = Recipe::new(
+            HouseholdId::new(),
+            "Bœuf de sept heures",
+            Some(MAX_TIME_MIN + 1),
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap_err();
+        assert_eq!(error, RecipeError::TimeOutOfRange);
+    }
+
+    #[test]
+    fn accepts_a_time_at_the_boundary() {
+        let recipe = Recipe::new(
+            HouseholdId::new(),
+            "Bœuf de sept heures",
+            Some(MAX_TIME_MIN),
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap();
+        assert_eq!(recipe.prep_time_min, Some(MAX_TIME_MIN));
     }
 
     #[test]
