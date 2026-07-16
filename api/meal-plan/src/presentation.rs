@@ -28,7 +28,7 @@ use crate::application::commands::{
     ClearMealCommand, ClearMealHandler, ClearMealResponse, PlaceMealCommand, PlaceMealHandler,
     PlaceMealResponse,
 };
-use crate::application::queries::{GetWeekHandler, GetWeekQuery, GetWeekResponse};
+use crate::application::queries::{GetWeekHandler, GetWeekQuery, GetWeekResponse, MAX_RANGE_DAYS};
 use crate::domain::{MealPlanRepository, PlannedMeal, Slot};
 
 /// État injecté dans les routes du calendrier.
@@ -107,6 +107,11 @@ async fn week(
             let views: Vec<PlannedMealView> = meals.into_iter().map(Into::into).collect();
             (StatusCode::OK, Json(views)).into_response()
         }
+        GetWeekResponse::RangeTooWide => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("la plage demandée dépasse {MAX_RANGE_DAYS} jours"),
+        )
+            .into_response(),
         GetWeekResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }

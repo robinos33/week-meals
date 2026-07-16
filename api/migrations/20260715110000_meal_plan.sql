@@ -14,8 +14,12 @@ create table meal_plan (
     updated_at   timestamptz not null default now(),
     primary key (household_id, meal_date, slot),
     foreign key (household_id) references households (id) on delete cascade,
-    foreign key (household_id, recipe_id)
+    -- Nommée : l'infra distingue cette violation (recette hors foyer ⇒ 404)
+    -- de celle du foyer ci-dessus (panne ⇒ 500), via le nom de contrainte.
+    constraint meal_plan_recipe_fkey foreign key (household_id, recipe_id)
         references recipes (household_id, id) on delete cascade
 );
 
-create index meal_plan_household_date_idx on meal_plan (household_id, meal_date);
+-- Pas d'index sur (household_id, meal_date) : la clé primaire composite
+-- (household_id, meal_date, slot) couvre déjà ce préfixe, y compris pour la
+-- lecture d'une plage de jours.
