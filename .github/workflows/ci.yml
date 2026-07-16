@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt · clippy · tests unitaires
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests unitaires
+        run: cargo test --workspace
+
+  integration:
+    name: tests d'intégration (Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: weekmeals
+          POSTGRES_PASSWORD: weekmeals
+          POSTGRES_DB: weekmeals
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U weekmeals -d weekmeals"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://weekmeals:weekmeals@localhost:5432/weekmeals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: api
+      # Les tests d'intégration sont marqués `#[ignore]` : ils appliquent
+      # eux-mêmes les migrations et seedent leurs données contre le Postgres
+      # de service ci-dessus.
+      - name: Tests d'intégration
+        run: cargo test --workspace -- --ignored
