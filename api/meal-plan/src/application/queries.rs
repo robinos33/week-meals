@@ -16,12 +16,21 @@ pub struct GetWeekQuery {
     pub end: NaiveDate,
 }
 
+/// Plage maximale lisible en une requête, en jours (bornes incluses).
+///
+/// Le front affiche une semaine ; on laisse de la marge pour une vue mensuelle
+/// sans pour autant permettre `?from=0001-01-01&to=9999-12-31`, qui ramènerait
+/// tout le calendrier du foyer en une fois.
+pub const MAX_RANGE_DAYS: i64 = 366;
+
 /// Résultat d'une lecture de semaine.
 #[derive(Debug)]
 pub enum GetWeekResponse {
     /// Cases occupées (ordonnées par date puis créneau). Vide si la plage est
     /// inversée ou sans repas planifié.
     Week(Vec<PlannedMeal>),
+    /// Plage demandée trop large (> [`MAX_RANGE_DAYS`] jours).
+    RangeTooWide,
     /// Panne technique.
     Unavailable,
 }
@@ -39,10 +48,13 @@ impl<'a> GetWeekHandler<'a> {
     }
 
     /// Exécute la lecture. Une plage inversée renvoie une semaine vide (aucune
-    /// requête). Ne renvoie jamais d'erreur.
+    /// requête) ; une plage trop large est refusée. Ne renvoie jamais d'erreur.
     pub async fn handle(&self, query: GetWeekQuery) -> GetWeekResponse {
         if query.end < query.start {
             return GetWeekResponse::Week(Vec::new());
+        }
+        if (query.end - query.start).num_days() >= MAX_RANGE_DAYS {
+            return GetWeekResponse::RangeTooWide;
         }
         match self
             .plan
@@ -90,6 +102,19 @@ mod tests {
             GetWeekResponse::Week(meals) => assert_eq!(meals.len(), 1),
             other => panic!("attendu Week, obtenu {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn range_wider_than_a_year_is_refused() {
+        let plan = InMemoryMealPlan::default();
+        let response = GetWeekHandler::new(&plan)
+            .handle(GetWeekQuery {
+                household_id: HouseholdId::new(),
+                start: date("2026-01-01"),
+                end: date("9999-12-31"),
+            })
+            .await;
+        assert!(matches!(response, GetWeekResponse::RangeTooWide));
     }
 
     #[tokio::test]

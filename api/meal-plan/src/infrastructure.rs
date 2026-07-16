@@ -2,9 +2,9 @@
 //! [`MealPlanRepository`](crate::domain::MealPlanRepository).
 //!
 //! Requêtes runtime (aucune macro vérifiée à la compilation). Une violation de
-//! clé étrangère à l'écriture (recette absente du foyer) est traduite en
-//! [`RepositoryError::NotFound`] ; les autres erreurs SQLx en
-//! [`RepositoryError::Backend`].
+//! la clé étrangère **vers les recettes** à l'écriture (recette absente du
+//! foyer) est traduite en [`RepositoryError::NotFound`] ; les autres erreurs
+//! SQLx en [`RepositoryError::Backend`].
 
 use chrono::NaiveDate;
 use kernel::{HouseholdId, RecipeId, RepositoryError};
@@ -13,11 +13,18 @@ use uuid::Uuid;
 
 use crate::domain::{MealPlanRepository, PlannedMeal, Slot};
 
-/// Traduit une erreur SQLx : une violation de FK devient `NotFound` (la recette
-/// n'appartient pas au foyer), le reste devient `Backend`.
+/// Contrainte portant la FK vers les recettes (cf. migration `meal_plan`).
+const RECIPE_FK: &str = "meal_plan_recipe_fkey";
+
+/// Traduit une erreur SQLx. Seule la violation de la FK **vers les recettes**
+/// devient `NotFound` : elle signifie que la recette n'appartient pas au foyer,
+/// ce qui est une erreur d'appelant. La table porte une seconde FK (vers
+/// `households`) dont la violation, elle, trahit une incohérence serveur — on
+/// la laisse remonter en `Backend` plutôt que de la déguiser en « recette
+/// introuvable ».
 fn map_error(err: sqlx::Error) -> RepositoryError {
     if let sqlx::Error::Database(db) = &err {
-        if db.is_foreign_key_violation() {
+        if db.is_foreign_key_violation() && db.constraint() == Some(RECIPE_FK) {
             return RepositoryError::NotFound;
         }
     }
