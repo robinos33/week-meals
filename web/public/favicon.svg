@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Week Meals">
+  <rect width="64" height="64" rx="14" fill="#3f7d54" />
+  <path
+    d="M15 21 L23 45 L32 30 L41 45 L49 21"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="6.5"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
