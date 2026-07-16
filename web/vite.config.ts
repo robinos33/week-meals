@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
@@ -13,7 +14,8 @@ export default defineConfig({
     react(),
     VitePWA({
       // `prompt` : on notifie l'utilisateur qu'une mise à jour est prête
-      // (géré dans src/pwa.ts) plutôt que de recharger dans son dos.
+      // (géré dans src/components/ReloadPrompt.tsx) plutôt que de recharger
+      // dans son dos.
       registerType: "prompt",
       includeAssets: ["favicon.svg", "apple-touch-icon-180.png"],
       manifest: {
@@ -54,4 +56,9 @@ export default defineConfig({
       },
     }),
   ],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    css: false,
+  },
 });

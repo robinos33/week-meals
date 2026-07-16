@@ -49,11 +49,29 @@ export function RecipesScreen() {
 
       {query.isLoading ? (
         <p className="muted">Chargement…</p>
+      ) : query.isError ? (
+        <div className="empty-state">
+          <div className="empty-state__emoji">🌩️</div>
+          <h2>Recettes indisponibles</h2>
+          <p>La liste n'a pas pu être chargée.</p>
+          <button className="btn" type="button" onClick={() => query.refetch()}>
+            Réessayer
+          </button>
+        </div>
       ) : recipes.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state__emoji">🥬</div>
-          <h2>Aucune recette pour l'instant</h2>
-          <p>Ajoutez votre première recette avec le bouton +.</p>
+          <div className="empty-state__emoji">{search.trim() ? "🔍" : "🥬"}</div>
+          {search.trim() ? (
+            <>
+              <h2>Aucun résultat</h2>
+              <p>Aucune recette ne correspond à « {search.trim()} ».</p>
+            </>
+          ) : (
+            <>
+              <h2>Aucune recette pour l'instant</h2>
+              <p>Ajoutez votre première recette avec le bouton +.</p>
+            </>
+          )}
         </div>
       ) : (
         <div className="recipe-grid">

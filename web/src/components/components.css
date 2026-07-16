@@ -108,5 +108,6 @@
 .install-prompt__actions .btn,
 .reload-prompt__actions .btn {
   padding: 0 0.9rem;
-  min-height: 40px;
+  /* Bandeaux compacts, mais la cible reste au minimum tactile (--tap-target). */
+  min-height: var(--tap-target);
 }

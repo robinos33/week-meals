@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { api, ApiError } from "../api/client";
+import { clearSession } from "../api/session";
 import "./screens.css";
 
 /** Écran de connexion : pseudo + mot de passe, sobre (pas d'inscription). */
 export function LoginScreen() {
   const navigate = useNavigate();
+  const { redirect } = useSearch({ from: "/login" });
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -17,7 +19,10 @@ export function LoginScreen() {
     setPending(true);
     try {
       await api.post("/auth/login", { username, password });
-      await navigate({ to: "/recipes" });
+      // La garde a pu mettre en cache l'échec de session : on repart de zéro,
+      // sinon la route protégée renverrait aussitôt vers /login.
+      clearSession();
+      await navigate({ to: redirect ?? "/recipes" });
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401

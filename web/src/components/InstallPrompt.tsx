@@ -33,9 +33,13 @@ export function InstallPrompt() {
       setDeferred(event as BeforeInstallPromptEvent);
       setVisible(true);
     };
+    const onInstalled = () => setVisible(false);
     window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", () => setVisible(false));
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, []);
 
   if (!visible || !deferred) return null;

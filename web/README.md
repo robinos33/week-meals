@@ -17,27 +17,35 @@ avec `WEB_ORIGIN=http://localhost:5173` pour autoriser le front via CORS.
 
 ## Scripts
 
-| Script            | Rôle                                              |
-|-------------------|---------------------------------------------------|
-| `npm run dev`     | serveur de dev Vite                               |
-| `npm run build`   | typecheck (`tsc -b`) + build de production        |
-| `npm run preview` | sert le build de `dist/`                           |
+| Script              | Rôle                                            |
+|---------------------|-------------------------------------------------|
+| `npm run dev`       | serveur de dev Vite                             |
+| `npm run build`     | typecheck (`tsc -b`) + build de production      |
+| `npm run preview`   | sert le build de `dist/`                         |
 | `npm run typecheck` | vérification TypeScript seule                   |
+| `npm run lint`      | ESLint                                          |
+| `npm test`          | tests Vitest (`test:watch` en continu)          |
 | `npm run gen:icons` | régénère les icônes PWA depuis `scripts/`       |
+
+Les quatre premiers tournent en CI sur chaque PR touchant `web/`
+(`.github/workflows/ci-web.yml`).
 
 ## Architecture
 
 - **Design tokens** « Cantine » : `src/theme/tokens.css` (clair + sombre).
-- **Thème** : `src/theme/ThemeProvider.tsx` — bascule clair/système/sombre,
-  respecte `prefers-color-scheme`, persistée.
 - **Coquille** : `src/components/AppShell.tsx` — barre d'onglets basse
   (`TabBar`), zones sûres (safe-area), invite d'installation (`InstallPrompt`)
   et bandeau de mise à jour du service worker (`ReloadPrompt`).
-- **Routing** : TanStack Router (`src/router.tsx`). **Données** : TanStack Query
-  (`src/query.ts`) via le client `src/api/client.ts` (cookies de session).
+- **Routing** : TanStack Router (`src/router.tsx`). Les écrans vivent sous une
+  route de mise en page sans chemin qui exige une session (`src/api/session.ts`,
+  `GET /auth/me`) : un écran ajouté dessous est protégé par défaut, et un 401
+  renvoie vers `/login` en mémorisant l'écran demandé.
+- **Données** : TanStack Query (`src/query.ts`) via le client `src/api/client.ts`
+  (cookies de session, `credentials: "include"`).
 - **PWA** : `vite-plugin-pwa` (manifest, icônes, service worker) — cf.
   `vite.config.ts`.
 
 ## Déploiement
 
-Cloudflare Pages — voir [`docs/deploiement-front.md`](../docs/deploiement-front.md).
+Cloudflare Pages (cf. [ADR-0001](../docs/adr/0001-stack-rust-axum-scaleway.md)) —
+la configuration et la procédure arrivent avec #23.

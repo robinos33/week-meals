@@ -22,9 +22,16 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init,
+    credentials: "include",
+    headers: {
+      // Uniquement quand il y a un corps : `Content-Type: application/json`
+      // n'est pas une valeur safelistée CORS, elle déclencherait un préflight
+      // `OPTIONS` sur chaque GET — or le front et l'API sont sur des origines
+      // distinctes en prod (cf. docs/deploiement-front.md).
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
 
   if (!response.ok) {
