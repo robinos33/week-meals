@@ -9,13 +9,20 @@ workspace = true
 
 [dependencies]
 kernel = { workspace = true }
+auth = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-# Les domaines seront ajoutés ici quand ils exposeront un router :
-# recipes = { workspace = true } etc.
+sqlx = { workspace = true }
+tower-http = { workspace = true }
+tower-sessions = "0.14"
+tower-sessions-sqlx-store = { version = "0.15.0", features = ["postgres"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tower = { workspace = true, features = ["util"] }
+http-body-util = "0.1"
+uuid = { workspace = true }
+serde_json = { workspace = true }
