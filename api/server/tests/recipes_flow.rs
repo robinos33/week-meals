@@ -44,7 +44,7 @@ async fn recipe_crud_flow() {
     let config = Config::from_env();
 
     // Seed d'un compte, puis login pour obtenir le cookie de session.
-    let username = format!("cook_{}", uuid::Uuid::new_v4().simple());
+    let username = format!("cook_{}", &uuid::Uuid::new_v4().simple().to_string()[..24]);
     let password = "correct horse battery";
     let household = Household::new(HouseholdName::new("Chez nous").unwrap());
     SqlxHouseholdRepository::new(pool.clone())

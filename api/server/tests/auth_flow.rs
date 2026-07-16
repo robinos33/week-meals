@@ -54,7 +54,7 @@ async fn login_me_logout_flow() {
     let config = Config::from_env();
 
     // Seed : un foyer + un utilisateur avec un mot de passe connu, pseudo unique.
-    let username = format!("robin_{}", uuid::Uuid::new_v4().simple());
+    let username = format!("robin_{}", &uuid::Uuid::new_v4().simple().to_string()[..24]);
     let password = "correct horse battery";
     let household = Household::new(HouseholdName::new("Chez nous").unwrap());
     SqlxHouseholdRepository::new(pool.clone())
