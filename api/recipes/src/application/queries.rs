@@ -155,6 +155,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_is_sorted_by_title() {
+        let household = HouseholdId::new();
+        let repo = InMemoryRecipes::with(vec![
+            sample_recipe(household, "Tarte aux pommes"),
+            sample_recipe(household, "ratatouille"),
+        ]);
+        let response = ListRecipesHandler::new(&repo)
+            .handle(ListRecipesQuery {
+                household_id: household,
+                search: None,
+            })
+            .await;
+        match response {
+            ListRecipesResponse::Listed(recipes) => {
+                let titles: Vec<&str> = recipes.iter().map(|r| r.title.as_str()).collect();
+                assert_eq!(titles, ["ratatouille", "Tarte aux pommes"]);
+            }
+            other => panic!("attendu Listed, obtenu {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn search_filters_by_title_case_insensitive() {
         let household = HouseholdId::new();
         let repo = InMemoryRecipes::with(vec![

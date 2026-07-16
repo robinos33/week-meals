@@ -38,6 +38,23 @@ fn minutes(value: Option<i32>) -> Option<u32> {
     value.and_then(|v| u32::try_from(v).ok())
 }
 
+/// Convertit des minutes du domaine en entier SQL. Le domaine borne les temps à
+/// [`MAX_TIME_MIN`] (cf. [`Recipe::from_parts`]) : la saturation est donc
+/// inatteignable, elle évite juste un `as` qui replierait la valeur en négatif.
+fn minutes_to_sql(value: Option<u32>) -> Option<i32> {
+    value.map(|m| i32::try_from(m).unwrap_or(i32::MAX))
+}
+
+/// Échappe les jokers `LIKE` (`%`, `_`) et le caractère d'échappement lui-même,
+/// pour qu'une recherche sur « 100% » cherche bien « 100% » et non « 100 » suivi
+/// de n'importe quoi. À utiliser avec `like ... escape '\'`.
+fn escape_like(input: &str) -> String {
+    input
+        .replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_")
+}
+
 #[derive(sqlx::FromRow)]
 struct RecipeRow {
     id: Uuid,
@@ -223,8 +240,8 @@ impl RecipeRepository for SqlxRecipeRepository {
         .bind(recipe.household_id.as_uuid())
         .bind(&recipe.title)
         .bind(recipe.photo.as_deref())
-        .bind(recipe.prep_time_min.map(|m| m as i32))
-        .bind(recipe.cook_time_min.map(|m| m as i32))
+        .bind(minutes_to_sql(recipe.prep_time_min))
+        .bind(minutes_to_sql(recipe.cook_time_min))
         .execute(&mut *tx)
         .await
         .map_err(backend)?;
@@ -270,10 +287,11 @@ impl RecipeRepository for SqlxRecipeRepository {
         household_id: HouseholdId,
         query: &str,
     ) -> Result<Vec<Recipe>, RepositoryError> {
-        let pattern = format!("%{}%", query.trim());
+        let pattern = format!("%{}%", escape_like(query.trim()));
         let rows: Vec<RecipeRow> = sqlx::query_as(
             "select id, household_id, title, photo, prep_time_min, cook_time_min \
-             from recipes where household_id = $1 and title ilike $2 order by lower(title)",
+             from recipes where household_id = $1 and title ilike $2 escape '\\' \
+             order by lower(title)",
         )
         .bind(household_id.as_uuid())
         .bind(pattern)
@@ -293,8 +311,8 @@ impl RecipeRepository for SqlxRecipeRepository {
         .bind(recipe.household_id.as_uuid())
         .bind(&recipe.title)
         .bind(recipe.photo.as_deref())
-        .bind(recipe.prep_time_min.map(|m| m as i32))
-        .bind(recipe.cook_time_min.map(|m| m as i32))
+        .bind(minutes_to_sql(recipe.prep_time_min))
+        .bind(minutes_to_sql(recipe.cook_time_min))
         .execute(&mut *tx)
         .await
         .map_err(backend)?;

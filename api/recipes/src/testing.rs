@@ -43,6 +43,22 @@ impl InMemoryRecipes {
     pub fn count(&self) -> usize {
         self.recipes.lock().unwrap().len()
     }
+
+    /// Recettes retenues par le prédicat, triées comme l'implémentation SQLx
+    /// (`order by lower(title)`) — pour que les tests exercent le même ordre
+    /// que la production.
+    fn matching(&self, predicate: impl Fn(&Recipe) -> bool) -> Vec<Recipe> {
+        let mut found: Vec<Recipe> = self
+            .recipes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| predicate(r))
+            .cloned()
+            .collect();
+        found.sort_by_key(|r| r.title.to_lowercase());
+        found
+    }
 }
 
 #[async_trait::async_trait]
@@ -67,14 +83,7 @@ impl RecipeRepository for InMemoryRecipes {
     }
 
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<Recipe>, RepositoryError> {
-        Ok(self
-            .recipes
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|r| r.household_id == household_id)
-            .cloned()
-            .collect())
+        Ok(self.matching(|r| r.household_id == household_id))
     }
 
     async fn search(
@@ -82,15 +91,10 @@ impl RecipeRepository for InMemoryRecipes {
         household_id: HouseholdId,
         query: &str,
     ) -> Result<Vec<Recipe>, RepositoryError> {
-        let needle = query.to_lowercase();
-        Ok(self
-            .recipes
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|r| r.household_id == household_id && r.title.to_lowercase().contains(&needle))
-            .cloned()
-            .collect())
+        let needle = query.trim().to_lowercase();
+        Ok(self.matching(|r| {
+            r.household_id == household_id && r.title.to_lowercase().contains(&needle)
+        }))
     }
 
     async fn update(&self, recipe: &Recipe) -> Result<(), RepositoryError> {

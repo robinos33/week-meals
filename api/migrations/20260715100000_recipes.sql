@@ -15,7 +15,10 @@ create table recipes (
 );
 
 create index recipes_household_id_idx on recipes (household_id);
--- Recherche par titre pour la grille du front (ILIKE insensible à la casse).
+-- Sert le tri de la grille du front (`order by lower(title)`). La recherche
+-- `title ilike '%…%'` ne peut pas l'utiliser (joker en tête) : elle scanne le
+-- foyer, ce qui reste négligeable à cette échelle. Si le volume le justifiait,
+-- passer à un index trigram (`pg_trgm` + GIN).
 create index recipes_title_idx on recipes (household_id, lower(title));
 
 -- Ingrédients d'une recette, ordonnés par `position`.
