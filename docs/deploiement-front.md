@@ -32,17 +32,31 @@ environnement, jamais en dur :
 
 ## Déploiement
 
-Deux options, au choix :
+Deux options — **une seule à la fois** : activer les deux ferait partir deux
+déploiements concurrents à chaque push sur `main`.
 
 1. **Intégration Git native** de Cloudflare Pages (recommandé) : connecter le
    dépôt, renseigner les réglages de build ci-dessus. Chaque push produit un
-   déploiement (preview par branche, production sur `main`).
+   déploiement (preview par branche, production sur `main`). Dans ce cas,
+   désactiver le workflow Actions ci-dessous.
 2. **GitHub Actions** : le workflow
    [`.github/workflows/deploy-web.yml`](../.github/workflows/deploy-web.yml)
    build puis `wrangler pages deploy`. Secrets requis : `CLOUDFLARE_API_TOKEN`
-   (scope *Cloudflare Pages: Edit*) et `CLOUDFLARE_ACCOUNT_ID`.
+   (scope *Cloudflare Pages: Edit*) et `CLOUDFLARE_ACCOUNT_ID`. Dans ce cas, ne
+   pas connecter l'intégration Git de Pages.
 
 En local : `cd web && npx wrangler pages deploy dist` (après `npm run build`).
+
+Le workflow échoue explicitement si `VITE_API_URL` est vide : sans ce garde-fou
+le build partirait au vert avec une URL d'API vide, donc un front cassé en prod.
+
+## En-têtes de sécurité
+
+[`web/public/_headers`](../web/public/_headers) pose `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` et `HSTS`. Il n'y a
+**pas** de `Content-Security-Policy` : `index.html` porte un script inline (le
+thème résolu avant le premier paint) qu'une CSP stricte bloquerait, et la faire
+passer demanderait un hash à régénérer à chaque retouche. À traiter séparément.
 
 ## Cookies de session en cross-origin (important)
 

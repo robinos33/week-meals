@@ -1,5 +1,20 @@
 # En-têtes Cloudflare Pages.
 
+# --- Sécurité -----------------------------------------------------------
+# L'app porte une session : on limite ce qu'une injection pourrait exploiter.
+#
+# Pas de `Content-Security-Policy` ici, volontairement : `index.html` porte un
+# script inline (résolution du thème avant le premier paint, #27), qu'une CSP
+# stricte bloquerait. La faire passer demande un hash à régénérer à chaque
+# retouche du script, ou un nonce — donc un rendu dynamique que Pages ne fait
+# pas sur du statique. À traiter dans un ticket dédié.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
 # Le service worker et le manifest ne doivent jamais être servis « périmés » :
 # c'est ce qui permet à la mise à jour du SW d'être détectée rapidement.
 /sw.js

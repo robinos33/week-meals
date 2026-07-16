@@ -36,6 +36,17 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Sans ce garde-fou, une variable non renseignée vaut la chaîne vide : le
+      # build passerait au vert et le front partirait en prod en tapant en
+      # same-origin, c'est-à-dire cassé, sans que rien ne le signale.
+      - name: Vérifie la configuration
+        run: |
+          if [ -z "${{ vars.VITE_API_URL }}" ]; then
+            echo "::error::La variable de dépôt VITE_API_URL est vide ou absente."
+            echo "Settings → Secrets and variables → Actions → Variables."
+            exit 1
+          fi
+
       - name: Build
         run: npm run build
         env:
