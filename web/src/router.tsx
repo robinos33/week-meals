@@ -4,9 +4,7 @@ import {
   createRouter,
   redirect,
 } from "@tanstack/react-router";
-import { requireSession } from "./api/session";
 import { AppShell } from "./components/AppShell";
-import { LoginScreen } from "./routes/login";
 import { RecipesScreen } from "./routes/recipes";
 import { WeekScreen } from "./routes/week";
 import { ShoppingScreen } from "./routes/shopping";
@@ -22,65 +20,39 @@ const indexRoute = createRoute({
   },
 });
 
-const loginRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/login",
-  component: LoginScreen,
-  // `?redirect=` mémorise l'écran demandé avant la redirection, pour y revenir
-  // après connexion. Restreint aux chemins internes : une valeur absolue
-  // (`//evil.tld`) permettrait une redirection ouverte via un lien forgé.
-  validateSearch: (search: Record<string, unknown>) => {
-    const target = search.redirect;
-    return typeof target === "string" && target.startsWith("/") && !target.startsWith("//")
-      ? { redirect: target }
-      : {};
-  },
-});
-
-/**
- * Route de mise en page sans chemin : tout ce qui vit dessous exige une session.
- * La garde est posée ici une fois, plutôt que répétée sur chaque écran — un
- * écran ajouté plus tard est protégé par défaut.
- */
-const authenticatedRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  id: "authenticated",
-  beforeLoad: ({ location }) => requireSession(location.pathname),
-});
-
+// Mode public (preview) : plus de mire ni de garde de session. Les écrans
+// vivent directement sous la racine et l'API scope au foyer de démo (cf.
+// AUTH_DISABLED). Réactiver l'auth = reposer la garde `requireSession` ici.
 const recipesRoute = createRoute({
-  getParentRoute: () => authenticatedRoute,
+  getParentRoute: () => rootRoute,
   path: "/recipes",
   component: RecipesScreen,
 });
 
 const weekRoute = createRoute({
-  getParentRoute: () => authenticatedRoute,
+  getParentRoute: () => rootRoute,
   path: "/week",
   component: WeekScreen,
 });
 
 const shoppingRoute = createRoute({
-  getParentRoute: () => authenticatedRoute,
+  getParentRoute: () => rootRoute,
   path: "/shopping",
   component: ShoppingScreen,
 });
 
 const settingsRoute = createRoute({
-  getParentRoute: () => authenticatedRoute,
+  getParentRoute: () => rootRoute,
   path: "/settings",
   component: SettingsScreen,
 });
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  loginRoute,
-  authenticatedRoute.addChildren([
-    recipesRoute,
-    weekRoute,
-    shoppingRoute,
-    settingsRoute,
-  ]),
+  recipesRoute,
+  weekRoute,
+  shoppingRoute,
+  settingsRoute,
 ]);
 
 export const router = createRouter({ routeTree });

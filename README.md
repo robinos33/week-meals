@@ -7,8 +7,10 @@ semaine (midi / soir) et générer une liste de courses intelligente.
 en unités achetables — `600 g de courgettes` devient `3 courgettes`, grâce à un
 référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredients.yaml)).
 
-> 🚧 **Statut : phase de conception.** Pas encore de code applicatif — le plan,
-> les décisions d'architecture et les schémas de données sont dans [docs/](docs/).
+> 🚧 **Statut : en construction.** L'API (auth, recettes) et la coquille PWA
+> tournent en local ; le parcours est ouvert en **mode public** le temps de
+> câbler les écrans (voir « Mode public » plus bas). Plan, décisions et schémas
+> dans [docs/](docs/).
 
 ## Fonctionnalités cibles
 
@@ -55,7 +57,21 @@ docker compose up -d          # Postgres sur localhost:5432 (POSTGRES_PORT pour 
 
 # 3. Migrations
 sqlx migrate run --source api/migrations
+
+# 4. API (Axum) — lit .env automatiquement, écoute sur :8080
+cargo run --manifest-path api/Cargo.toml -p server
+
+# 5. Front (Vite) — dans un autre terminal, sur :5173
+cd web && npm install && npm run dev
 ```
+
+### Mode public (preview sans compte)
+
+`.env.example` livre `AUTH_DISABLED=1` : l'API n'exige alors aucune session et
+scope tout au foyer de démonstration (migration `seed_demo_household`), et le
+front n'affiche pas de mire de connexion. Pratique pour voir le résultat « en
+live » avant que le parcours d'invitation ne soit branché. **Ne jamais activer
+`AUTH_DISABLED` en production** : remettre la valeur à `0` y rétablit l'auth.
 
 Avant tout déploiement, remplacer les valeurs `change-me` de `.env`
 (`SESSION_SECRET`, `BOOTSTRAP_INVITE_CODE`) — voir [ADR-0002](docs/adr/0002-auth-sans-email.md).
