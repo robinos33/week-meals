@@ -91,6 +91,21 @@ avoir édité le fichier met simplement la base à jour.
 L'import est **idempotent** : il fait un upsert par titre (dans le foyer), donc
 rejouer un seed ne crée pas de doublon.
 
+#### Récupérer une recette depuis le web
+
+```sh
+weekmeals scrape <url> --out recette.yaml   # ...ou sur stdout
+# on relit / corrige le YAML, puis :
+weekmeals import recette.yaml
+```
+
+`scrape` lit le **JSON-LD schema.org** que publient la plupart des sites de
+cuisine — pas de sélecteur HTML propre à chaque site. Les quantités des sites
+étant du texte libre (« 2 c. à soupe d'huile »), leur découpage en
+`quantity`/`unit` est **heuristique** : le YAML produit est un **brouillon à
+relire** avant import. Les cuillères sont converties (soupe = 15 mL, café =
+5 mL), de même que cL/dL ; sans unité reconnue, la ligne devient une pièce.
+
 ### Mode public (preview sans compte)
 
 `.env.example` livre `AUTH_DISABLED=1` : l'API n'exige alors aucune session et
