@@ -169,11 +169,40 @@
 
 /* --- Champs de formulaire -------------------------------------------------- */
 
-.field label {
+.field label,
+.field-label {
   display: block;
   font-size: 0.85rem;
   font-weight: 600;
   margin-bottom: 0.3rem;
+}
+
+/* --- Upload photo ---------------------------------------------------------- */
+
+.photo-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.photo-upload__preview {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.photo-upload__preview img {
+  width: 140px;
+  height: 105px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+/* Le `<label>` fait office de bouton ; l'input fichier est masqué dedans. */
+.photo-upload__pick {
+  cursor: pointer;
 }
 
 .form-error {

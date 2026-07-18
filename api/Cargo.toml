@@ -52,6 +52,9 @@ sqlx = { version = "0.8", default-features = false, features = [
     "migrate",
 ] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
+rust-s3 = { version = "0.35", default-features = false, features = [
+    "tokio-rustls-tls",
+] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

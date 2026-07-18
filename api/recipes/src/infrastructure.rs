@@ -352,3 +352,88 @@ impl RecipeRepository for SqlxRecipeRepository {
         }
     }
 }
+
+// --- Stockage des photos (S3-compatible : Cloudflare R2 / MinIO) -------------
+
+use s3::creds::Credentials;
+use s3::{Bucket, Region};
+
+use crate::domain::{photo_extension, PhotoError, PhotoStorage, PhotoUpload};
+
+/// Configuration du stockage photo (lue depuis l'environnement par le `server`).
+#[derive(Debug, Clone)]
+pub struct R2Config {
+    /// Endpoint S3 : URL du compte R2 en prod, `http://localhost:9000` (MinIO) en dev.
+    pub endpoint: String,
+    /// Région S3. `auto` pour R2, `us-east-1` pour MinIO.
+    pub region: String,
+    /// Nom du bucket.
+    pub bucket: String,
+    /// Clé d'accès.
+    pub access_key: String,
+    /// Clé secrète.
+    pub secret_key: String,
+    /// Base publique des URLs stockées (domaine public R2, ou l'endpoint MinIO).
+    pub public_base_url: String,
+    /// Durée de validité d'une URL présignée, en secondes.
+    pub expiry_secs: u32,
+}
+
+/// Implémentation S3 du port [`PhotoStorage`], via `rust-s3`.
+///
+/// Utilise le **path-style** (`endpoint/bucket/clé`) pour rester compatible avec
+/// un endpoint custom (R2, MinIO) sans DNS par bucket. La présignature est
+/// hors-ligne : aucun octet de fichier ne passe par l'API.
+pub struct R2PhotoStorage {
+    bucket: Box<Bucket>,
+    public_base_url: String,
+    expiry_secs: u32,
+}
+
+impl R2PhotoStorage {
+    /// Construit le stockage depuis sa configuration.
+    ///
+    /// # Errors
+    /// [`PhotoError::Backend`] si les identifiants ou le bucket sont invalides.
+    pub fn new(config: R2Config) -> Result<Self, PhotoError> {
+        let region = Region::Custom {
+            region: config.region,
+            endpoint: config.endpoint.trim_end_matches('/').to_owned(),
+        };
+        let credentials = Credentials::new(
+            Some(&config.access_key),
+            Some(&config.secret_key),
+            None,
+            None,
+            None,
+        )
+        .map_err(|e| PhotoError::Backend(e.to_string()))?;
+        let bucket = Bucket::new(&config.bucket, region, credentials)
+            .map_err(|e| PhotoError::Backend(e.to_string()))?
+            .with_path_style();
+        Ok(Self {
+            bucket,
+            public_base_url: config.public_base_url.trim_end_matches('/').to_owned(),
+            expiry_secs: config.expiry_secs,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl PhotoStorage for R2PhotoStorage {
+    async fn presign_upload(&self, content_type: &str) -> Result<PhotoUpload, PhotoError> {
+        let extension = photo_extension(content_type)
+            .ok_or_else(|| PhotoError::UnsupportedType(content_type.to_owned()))?;
+        // Clé opaque : évite les collisions et ne fuite pas le nom d'origine.
+        let key = format!("recipes/{}.{extension}", uuid::Uuid::new_v4());
+        let upload_url = self
+            .bucket
+            .presign_put(format!("/{key}"), self.expiry_secs, None, None)
+            .await
+            .map_err(|e| PhotoError::Backend(e.to_string()))?;
+        Ok(PhotoUpload {
+            upload_url,
+            public_url: format!("{}/{key}", self.public_base_url),
+        })
+    }
+}

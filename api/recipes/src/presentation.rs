@@ -16,7 +16,7 @@ use auth::presentation::AuthUser;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use kernel::{RecipeId, Unit};
 use serde::{Deserialize, Serialize};
@@ -32,19 +32,24 @@ use crate::application::queries::{
     ListRecipesResponse,
 };
 use crate::application::IngredientInput;
-use crate::domain::{Recipe, RecipeRepository};
+use crate::domain::{PhotoError, PhotoStorage, Recipe, RecipeRepository};
 
 /// État injecté dans les routes recettes.
 #[derive(Clone)]
 pub struct RecipeState {
     /// Repository des recettes.
     pub recipes: Arc<dyn RecipeRepository>,
+    /// Stockage des photos (présignature). `None` si R2 n'est pas configuré :
+    /// la route de présignature répond alors `503`.
+    pub photos: Option<Arc<dyn PhotoStorage>>,
 }
 
 /// Sous-router des recettes, monté par le `server`.
 pub fn router(state: RecipeState) -> Router {
     Router::new()
         .route("/recipes", get(list).post(create))
+        // Route à 3 segments : ne chevauche pas `/recipes/{id}` (2 segments).
+        .route("/recipes/photos/presign", post(presign_photo))
         .route("/recipes/{id}", get(detail).put(update).delete(delete))
         .with_state(state)
 }
@@ -268,5 +273,56 @@ async fn delete(
         DeleteRecipeResponse::Deleted => StatusCode::NO_CONTENT.into_response(),
         DeleteRecipeResponse::NotFound => StatusCode::NOT_FOUND.into_response(),
         DeleteRecipeResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+// --- Photos ---------------------------------------------------------------
+
+/// Corps de la demande de présignature.
+#[derive(Debug, Deserialize)]
+struct PresignBody {
+    /// Type MIME de l'image à déposer (`image/jpeg`, `image/png`, `image/webp`).
+    content_type: String,
+}
+
+/// Réponse de présignature : où déposer le fichier, et l'URL à stocker ensuite.
+#[derive(Debug, Serialize)]
+struct PresignView {
+    upload_url: String,
+    public_url: String,
+}
+
+/// `POST /recipes/photos/presign` — présigne un upload direct au stockage.
+///
+/// Le client dépose ensuite le fichier sur `upload_url` (PUT direct à R2), puis
+/// enregistre `public_url` dans la recette. `503` si le stockage n'est pas
+/// configuré (dev sans R2), `422` si le type d'image n'est pas pris en charge.
+async fn presign_photo(
+    _user: AuthUser,
+    State(state): State<RecipeState>,
+    Json(body): Json<PresignBody>,
+) -> impl IntoResponse {
+    let Some(photos) = state.photos.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ErrorBody {
+                error: "stockage photo non configuré".to_owned(),
+            }),
+        )
+            .into_response();
+    };
+    match photos.presign_upload(&body.content_type).await {
+        Ok(upload) => (
+            StatusCode::OK,
+            Json(PresignView {
+                upload_url: upload.upload_url,
+                public_url: upload.public_url,
+            }),
+        )
+            .into_response(),
+        Err(PhotoError::UnsupportedType(_)) => {
+            invalid("type d'image non pris en charge (jpeg, png ou webp)".to_owned())
+        }
+        Err(PhotoError::Backend(_)) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
