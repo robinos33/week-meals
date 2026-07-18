@@ -151,6 +151,57 @@ pub enum RecipeError {
     TimeOutOfRange,
 }
 
+/// Extension de fichier autorisée pour un type MIME d'image. Contrat partagé
+/// entre la présentation (validation) et l'infrastructure (nom de l'objet).
+/// `None` = type non pris en charge.
+#[must_use]
+pub fn photo_extension(content_type: &str) -> Option<&'static str> {
+    match content_type {
+        "image/jpeg" => Some("jpg"),
+        "image/png" => Some("png"),
+        "image/webp" => Some("webp"),
+        _ => None,
+    }
+}
+
+/// Coordonnées d'un upload photo présigné.
+///
+/// Le client dépose le fichier directement sur `upload_url` (PUT, sans passer
+/// par l'API), puis stocke `public_url` dans la recette (champ `photo`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PhotoUpload {
+    /// URL présignée où déposer le fichier (PUT direct au stockage).
+    pub upload_url: String,
+    /// URL publique finale, à persister dans la recette.
+    pub public_url: String,
+}
+
+/// Échec de présignature d'un upload photo.
+#[derive(Debug, thiserror::Error)]
+pub enum PhotoError {
+    /// Type MIME non pris en charge (cf. [`photo_extension`]).
+    #[error("unsupported photo content type: {0}")]
+    UnsupportedType(String),
+    /// Panne technique du stockage (S3/R2).
+    #[error("photo storage error: {0}")]
+    Backend(String),
+}
+
+/// Port de stockage des photos (S3-compatible : Cloudflare R2 en prod, MinIO en
+/// dev). Le domaine ne connaît que ce trait ; l'implémentation vit dans
+/// l'infrastructure. Seule la **présignature** est exposée : l'octet du fichier
+/// ne transite jamais par l'API.
+#[async_trait::async_trait]
+pub trait PhotoStorage: Send + Sync {
+    /// Présigne un upload pour un `content_type` d'image donné.
+    ///
+    /// # Errors
+    /// - [`PhotoError::UnsupportedType`] si le type MIME n'est pas une image
+    ///   prise en charge ;
+    /// - [`PhotoError::Backend`] si la présignature échoue.
+    async fn presign_upload(&self, content_type: &str) -> Result<PhotoUpload, PhotoError>;
+}
+
 /// Port de persistance des recettes. Implémenté dans la couche infrastructure
 /// (SQLx) ; le domaine ne connaît que ce trait.
 ///
