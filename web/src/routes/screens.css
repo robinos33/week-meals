@@ -67,12 +67,22 @@
   flex-direction: column;
 }
 
+.recipe-card {
+  color: inherit;
+}
+
 .recipe-card__photo {
   aspect-ratio: 4 / 3;
   background: var(--color-surface-2);
   display: grid;
   place-items: center;
   font-size: 2rem;
+}
+
+.recipe-card__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .recipe-card__body {
@@ -157,28 +167,7 @@
   margin-bottom: 0.75rem;
 }
 
-/* --- Connexion ------------------------------------------------------------ */
-
-.login {
-  width: 100%;
-  max-width: 380px;
-  margin: 0 auto;
-}
-
-.login__brand {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.login__brand h1 {
-  font-size: 2.3rem;
-}
-
-.login form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
+/* --- Champs de formulaire -------------------------------------------------- */
 
 .field label {
   display: block;
@@ -191,4 +180,193 @@
   color: var(--color-danger);
   font-size: 0.9rem;
   min-height: 1.2em;
+}
+
+/* --- Formulaire de recette ------------------------------------------------- */
+
+.recipe-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  max-width: 560px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+}
+
+.form-group {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.form-group legend {
+  font-weight: 600;
+  padding: 0 0.35rem;
+}
+
+.ingredient-row {
+  display: grid;
+  grid-template-columns: 1fr 4.5rem 5.5rem auto;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.step-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.4rem;
+  align-items: start;
+}
+
+.step-row__num {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.6rem;
+  border-radius: 50%;
+  background: var(--color-primary-tint);
+  color: var(--color-primary-strong);
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.step-row__text {
+  min-height: var(--tap-target);
+  padding: 0.5rem 0.7rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.input--amount,
+.input--unit {
+  padding: 0 0.4rem;
+  min-width: 0;
+}
+
+/* Bouton « retirer » (icône) : cible tactile carrée, discrète. */
+.icon-btn {
+  width: var(--tap-target);
+  height: var(--tap-target);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.add-row {
+  align-self: flex-start;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+/* --- Détail d'une recette -------------------------------------------------- */
+
+.recipe-detail {
+  max-width: 640px;
+}
+
+.detail-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.link-back {
+  font-weight: 600;
+}
+
+.recipe-detail__photo {
+  aspect-ratio: 16 / 10;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.recipe-detail__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recipe-detail__title {
+  font-size: 1.9rem;
+}
+
+.recipe-detail__time {
+  margin-top: 0.25rem;
+}
+
+.recipe-detail__section {
+  font-size: 1.2rem;
+  margin: 1.5rem 0 0.6rem;
+}
+
+.ingredient-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ingredient-list li {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.ingredient-list__qty {
+  flex: 0 0 5.5rem;
+  font-weight: 600;
+  color: var(--color-primary-strong);
+}
+
+.step-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.step-list li {
+  padding-left: 0.3rem;
+}
+
+.recipe-detail__danger {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.confirm__actions {
+  display: flex;
+  gap: 0.6rem;
 }
