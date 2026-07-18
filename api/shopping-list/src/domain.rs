@@ -7,7 +7,11 @@
 //!   (cœur métier, cf. `plan.md`).
 
 pub mod conversion;
+pub mod list;
 pub mod reference;
 
 pub use conversion::{aggregate_purchases, PlannedIngredient, PurchaseItem};
+pub use list::{
+    PlannedIngredientsSource, ReferenceRepository, ShoppingItem, ShoppingListRepository,
+};
 pub use reference::{IngredientReference, ReferenceCatalog};

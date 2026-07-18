@@ -5,6 +5,7 @@
 //! il fait un upsert par titre au sein du foyer, pour rejouer un seed sans
 //! créer de doublons.
 
+mod ingredient_yaml;
 mod recipe_yaml;
 
 use std::collections::HashMap;
@@ -18,7 +19,10 @@ use recipes::infrastructure::SqlxRecipeRepository;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
+use ingredient_yaml::ReferenceFile;
 use recipe_yaml::RecipeYaml;
+use shopping_list::domain::IngredientReference;
+use shopping_list::infrastructure::SqlxReferenceRepository;
 
 /// Outils Week Meals.
 #[derive(Parser)]
@@ -61,6 +65,12 @@ enum Command {
         #[arg(long)]
         household: Option<Uuid>,
     },
+    /// Seede le référentiel d'ingrédients (poids moyens) — global, pas par foyer.
+    SeedIngredients {
+        /// Fichier YAML du référentiel.
+        #[arg(long, default_value = "data/ingredients.yaml")]
+        file: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -75,7 +85,7 @@ async fn main() -> Result<()> {
         .connect(&database_url)
         .await
         .context("connexion à la base de données")?;
-    let repo = SqlxRecipeRepository::new(pool);
+    let repo = SqlxRecipeRepository::new(pool.clone());
 
     match cli.command {
         Command::Import { paths, household } => {
@@ -95,6 +105,18 @@ async fn main() -> Result<()> {
         Command::Export { out, household } => {
             let household = resolve_household(household);
             export(&repo, household, out.as_deref()).await?;
+        }
+        Command::SeedIngredients { file } => {
+            let raw = std::fs::read_to_string(&file)
+                .with_context(|| format!("lecture de {}", file.display()))?;
+            let doc: ReferenceFile = serde_yaml::from_str(&raw)
+                .with_context(|| format!("YAML invalide : {}", file.display()))?;
+            let references: Vec<IngredientReference> =
+                doc.ingredients.into_iter().map(Into::into).collect();
+            let count = SqlxReferenceRepository::new(pool)
+                .upsert_all(&references)
+                .await?;
+            println!("{count} ingrédient(s) de référence seedé(s).");
         }
     }
     Ok(())

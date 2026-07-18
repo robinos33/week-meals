@@ -79,7 +79,14 @@ weekmeals seed                       # importe data/recipes/*.yaml (upsert idemp
 weekmeals import chemin/recette.yaml # importe un ou plusieurs fichiers
 weekmeals export --out ./mes-recettes  # un fichier .yaml par recette
 weekmeals export                     # ...ou sur stdout (documents séparés par ---)
+
+weekmeals seed-ingredients           # référentiel des poids moyens (global)
 ```
+
+Le **référentiel d'ingrédients** ([data/ingredients.yaml](data/ingredients.yaml))
+est global (pas par foyer) et alimente la conversion grammes → unités de la
+liste de courses. `seed-ingredients` fait un upsert par nom : le rejouer après
+avoir édité le fichier met simplement la base à jour.
 
 L'import est **idempotent** : il fait un upsert par titre (dans le foyer), donc
 rejouer un seed ne crée pas de doublon.

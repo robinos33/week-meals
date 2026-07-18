@@ -28,6 +28,10 @@ use meal_plan::presentation::MealPlanState;
 use recipes::domain::PhotoStorage;
 use recipes::infrastructure::{R2Config, R2PhotoStorage, SqlxRecipeRepository};
 use recipes::presentation::RecipeState;
+use shopping_list::infrastructure::{
+    SqlxPlannedIngredients, SqlxReferenceRepository, SqlxShoppingListRepository,
+};
+use shopping_list::presentation::ShoppingListState;
 
 /// Configuration HTTP lue depuis l'environnement.
 #[derive(Debug, Clone)]
@@ -119,12 +123,18 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
     let meal_plan_state = MealPlanState {
         plan: Arc::new(SqlxMealPlanRepository::new(pool.clone())),
     };
+    let shopping_list_state = ShoppingListState {
+        items: Arc::new(SqlxShoppingListRepository::new(pool.clone())),
+        references: Arc::new(SqlxReferenceRepository::new(pool.clone())),
+        planned: Arc::new(SqlxPlannedIngredients::new(pool.clone())),
+    };
 
     Router::new()
         .route("/health", get(health))
         .merge(presentation::router(auth_state))
         .merge(recipes::presentation::router(recipe_state))
         .merge(meal_plan::presentation::router(meal_plan_state))
+        .merge(shopping_list::presentation::router(shopping_list_state))
         .layer(session_layer)
         .layer(cors)
 }
