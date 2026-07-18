@@ -6,7 +6,7 @@
 //! sous [`SESSION_KEY`] ; l'extractor [`AuthUser`] la relit et **scope** les
 //! requêtes des autres domaines au foyer courant.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::extract::{FromRequestParts, State};
 use axum::http::request::Parts;
@@ -25,6 +25,31 @@ use crate::domain::UserRepository;
 
 /// Clé de stockage de l'identité en session.
 const SESSION_KEY: &str = "auth_user";
+
+/// Foyer de démonstration seedé par migration (`seed_demo_household`), sur
+/// lequel scope le mode public. UUID fixe partagé avec la migration SQL.
+pub const DEMO_HOUSEHOLD_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_0000_0000_0000_0000_0001);
+
+/// Utilisateur de démonstration servant d'identité en mode public. N'est pas
+/// persisté (les recettes ne référencent que le foyer) — un UUID fixe suffit.
+const DEMO_USER_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_0000_0000_0000_0000_0002);
+
+/// Mode public (dev / preview) : quand `AUTH_DISABLED` est vrai, les routes
+/// protégées cessent d'exiger une session et résolvent le foyer de démo. Lu une
+/// seule fois au démarrage. `None` (valeur par défaut) laisse l'auth active.
+static PUBLIC_USER: LazyLock<Option<SessionUser>> = LazyLock::new(|| {
+    let disabled = matches!(
+        std::env::var("AUTH_DISABLED")
+            .map(|v| v.to_lowercase())
+            .as_deref(),
+        Ok("1" | "true" | "yes")
+    );
+    disabled.then(|| SessionUser {
+        user_id: DEMO_USER_ID,
+        household_id: DEMO_HOUSEHOLD_ID,
+        username: "démo".to_owned(),
+    })
+});
 
 /// Identité sérialisée en session. Types « bruts » (`Uuid`, `String`) pour un
 /// (dé)sérialisation stable indépendante des newtypes du domaine.
@@ -66,6 +91,10 @@ where
     type Rejection = StatusCode;
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        // Mode public : on court-circuite la session et on scope au foyer de démo.
+        if let Some(user) = PUBLIC_USER.as_ref() {
+            return Ok(AuthUser(user.clone()));
+        }
         let session = Session::from_request_parts(parts, state)
             .await
             .map_err(|_| StatusCode::UNAUTHORIZED)?;

@@ -13,6 +13,7 @@ auth = { workspace = true }
 recipes = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
+dotenvy = "0.15"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }

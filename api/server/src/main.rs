@@ -7,6 +7,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 #[tokio::main]
 async fn main() {
+    // Charge `.env` s'il existe (dev local) ; absent en prod, où l'environnement
+    // est injecté par la plateforme — l'erreur est donc ignorée.
+    let _ = dotenvy::dotenv();
+
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(tracing_subscriber::fmt::layer())
