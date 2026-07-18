@@ -17,7 +17,7 @@
 
 [workspace]
 resolver = "2"
-members = ["kernel", "auth", "recipes", "meal-plan", "shopping-list", "server"]
+members = ["kernel", "auth", "recipes", "meal-plan", "shopping-list", "server", "cli"]
 
 [workspace.package]
 edition = "2021"
@@ -52,6 +52,10 @@ sqlx = { version = "0.8", default-features = false, features = [
     "migrate",
 ] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
+clap = { version = "4", features = ["derive"] }
+serde_yaml = "0.9"
+anyhow = "1"
+dotenvy = "0.15"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
