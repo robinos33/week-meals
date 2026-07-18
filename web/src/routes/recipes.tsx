@@ -1,33 +1,12 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client";
+import { Link } from "@tanstack/react-router";
+import { totalTime, useRecipes } from "../api/recipes";
 import "./screens.css";
-
-/** Vue d'une recette telle qu'exposée par l'API (`RecipeView`). */
-interface RecipeView {
-  id: string;
-  title: string;
-  photo: string | null;
-  prep_time_min: number | null;
-  cook_time_min: number | null;
-}
-
-function totalTime(recipe: RecipeView): string | null {
-  const total = (recipe.prep_time_min ?? 0) + (recipe.cook_time_min ?? 0);
-  return total > 0 ? `${total} min` : null;
-}
 
 /** Onglet Recettes : grille de cartes, recherche, bouton flottant « + ». */
 export function RecipesScreen() {
   const [search, setSearch] = useState("");
-  const query = useQuery({
-    queryKey: ["recipes", search],
-    queryFn: () =>
-      api.get<RecipeView[]>(
-        `/recipes${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ""}`,
-      ),
-  });
-
+  const query = useRecipes(search);
   const recipes = query.data ?? [];
 
   return (
@@ -76,17 +55,14 @@ export function RecipesScreen() {
       ) : (
         <div className="recipe-grid">
           {recipes.map((recipe) => (
-            <article key={recipe.id} className="card recipe-card">
+            <Link
+              key={recipe.id}
+              to="/recipes/$recipeId"
+              params={{ recipeId: recipe.id }}
+              className="card recipe-card"
+            >
               <div className="recipe-card__photo">
-                {recipe.photo ? (
-                  <img
-                    src={recipe.photo}
-                    alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  "🍽️"
-                )}
+                {recipe.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
               </div>
               <div className="recipe-card__body">
                 <div className="recipe-card__title">{recipe.title}</div>
@@ -94,14 +70,14 @@ export function RecipesScreen() {
                   <div className="recipe-card__time">{totalTime(recipe)}</div>
                 )}
               </div>
-            </article>
+            </Link>
           ))}
         </div>
       )}
 
-      <button className="fab" aria-label="Ajouter une recette" type="button">
+      <Link to="/recipes/new" className="fab" aria-label="Ajouter une recette">
         +
-      </button>
+      </Link>
     </section>
   );
 }

@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "./components/AppShell";
 import { RecipesScreen } from "./routes/recipes";
+import { RecipeDetailScreen } from "./routes/recipe-detail";
+import { EditRecipeScreen, NewRecipeScreen } from "./routes/recipe-form";
 import { WeekScreen } from "./routes/week";
 import { ShoppingScreen } from "./routes/shopping";
 import { SettingsScreen } from "./routes/settings";
@@ -29,6 +31,26 @@ const recipesRoute = createRoute({
   component: RecipesScreen,
 });
 
+// Route statique avant la route dynamique : `/recipes/new` doit primer sur
+// `/recipes/$recipeId` (TanStack privilégie le statique, l'ordre reste explicite).
+const recipeNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/recipes/new",
+  component: NewRecipeScreen,
+});
+
+const recipeDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/recipes/$recipeId",
+  component: RecipeDetailScreen,
+});
+
+const recipeEditRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/recipes/$recipeId/edit",
+  component: EditRecipeScreen,
+});
+
 const weekRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/week",
@@ -50,6 +72,9 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   recipesRoute,
+  recipeNewRoute,
+  recipeDetailRoute,
+  recipeEditRoute,
   weekRoute,
   shoppingRoute,
   settingsRoute,
