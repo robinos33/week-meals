@@ -139,6 +139,136 @@
   letter-spacing: 0.04em;
 }
 
+/* Navigation entre semaines. */
+.week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.week-nav__label {
+  font-weight: 600;
+}
+
+/* Créneau rempli : mini-carte recette (photo + titre + retrait). */
+.slot--filled {
+  border-style: solid;
+  color: var(--color-text);
+  padding: 0.45rem 0.55rem;
+}
+
+.slot__recipe {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.slot__thumb {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-size: 1rem;
+}
+
+.slot__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.slot__title {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.slot__remove {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-surface-2);
+  color: var(--color-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* --- Feuille de sélection (bottom sheet) ---------------------------------- */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 42, 34, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 30;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  background: var(--color-bg);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.sheet__handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-border);
+  margin: 0 auto;
+}
+
+.sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sheet__header h2 {
+  font-size: 1.2rem;
+}
+
+.sheet__list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  font-size: 0.95rem;
+}
+
 /* --- Liste de courses ----------------------------------------------------- */
 
 .quick-add {
@@ -252,7 +382,7 @@
   min-width: 0;
 }
 
-/* Bouton « retirer » (icône) : cible tactile carrée, discrète. */
+/* Bouton icône carré (retrait, navigation, fermeture). */
 .icon-btn {
   width: var(--tap-target);
   height: var(--tap-target);
@@ -262,6 +392,9 @@
   color: var(--color-muted);
   font-size: 1.3rem;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .add-row {

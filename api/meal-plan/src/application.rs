@@ -4,8 +4,7 @@
 //! Handler retourne toujours un objet Response, jamais une exception qui
 //! remonterait à la présentation.
 
-/// Écritures : Command + Handler + Response.
-pub mod commands {}
-
-/// Lectures : Query + Handler + Response.
-pub mod queries {}
+/// Écritures : placer / retirer une recette sur un créneau.
+pub mod commands;
+/// Lectures : lire la semaine.
+pub mod queries;
