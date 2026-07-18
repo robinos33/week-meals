@@ -21,5 +21,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # Stockage S3-compatible pour les photos, en dev (tient lieu de Cloudflare R2).
+  minio:
+    image: minio/minio
+    container_name: week-meals-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${R2_ACCESS_KEY_ID:-weekmeals}
+      MINIO_ROOT_PASSWORD: ${R2_SECRET_ACCESS_KEY:-weekmeals-secret}
+      # Autorise le PUT direct du navigateur (front sur une autre origine).
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+    ports:
+      - "${MINIO_PORT:-9000}:9000" # API S3
+      - "${MINIO_CONSOLE_PORT:-9001}:9001" # console web
+    volumes:
+      - minio_data:/data
+
+  # Crée le bucket et le rend lisible publiquement, puis se termine.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 ${R2_ACCESS_KEY_ID:-weekmeals} ${R2_SECRET_ACCESS_KEY:-weekmeals-secret}; do
+        echo 'MinIO indisponible, nouvel essai…'; sleep 1;
+      done &&
+      mc mb -p local/${R2_BUCKET:-week-meals-photos} &&
+      mc anonymous set download local/${R2_BUCKET:-week-meals-photos} &&
+      echo 'Bucket prêt.'
+      "
+    restart: "no"
+
 volumes:
   db_data:
+  minio_data:

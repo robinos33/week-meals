@@ -1,7 +1,8 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   UNITS,
+  uploadPhoto,
   useCreateRecipe,
   useRecipe,
   useUpdateRecipe,
@@ -68,6 +69,9 @@ function RecipeForm({
     initial?.cook_time_min != null ? String(initial.cook_time_min) : "",
   );
   const [photo, setPhoto] = useState(initial?.photo ?? "");
+  const [uploading, setUploading] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const [showPhotoUrl, setShowPhotoUrl] = useState(false);
   const [ingredients, setIngredients] = useState<IngredientRow[]>(
     initial?.ingredients.length
       ? initial.ingredients.map((i) => ({
@@ -86,6 +90,26 @@ function RecipeForm({
 
   function patchIngredient(key: number, patch: Partial<IngredientRow>) {
     setIngredients((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  async function onPhotoSelected(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // autorise la re-sélection du même fichier
+    if (!file) return;
+    setPhotoError("");
+    setUploading(true);
+    try {
+      setPhoto(await uploadPhoto(file));
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 503) {
+        setShowPhotoUrl(true);
+        setPhotoError("Stockage photo indisponible — collez une URL à la place.");
+      } else {
+        setPhotoError("Échec de l'upload. Réessayez.");
+      }
+    } finally {
+      setUploading(false);
+    }
   }
 
   function submit(event: FormEvent) {
@@ -153,15 +177,46 @@ function RecipeForm({
         </div>
 
         <div className="field">
-          <label htmlFor="photo">Photo (URL)</label>
-          <input
-            id="photo"
-            className="input"
-            type="url"
-            placeholder="https://…  (upload à venir)"
-            value={photo}
-            onChange={(e) => setPhoto(e.target.value)}
-          />
+          <span className="field-label">Photo</span>
+          <div className="photo-upload">
+            {photo && (
+              <div className="photo-upload__preview">
+                <img src={photo} alt="" />
+                <button
+                  type="button"
+                  className="btn btn--danger-ghost"
+                  onClick={() => setPhoto("")}
+                >
+                  Retirer
+                </button>
+              </div>
+            )}
+            <label className="btn photo-upload__pick">
+              {uploading ? "Envoi…" : photo ? "Changer la photo" : "Choisir une photo"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={onPhotoSelected}
+                disabled={uploading}
+                className="visually-hidden"
+              />
+            </label>
+            {showPhotoUrl && (
+              <input
+                className="input"
+                type="url"
+                placeholder="https://…"
+                value={photo}
+                onChange={(e) => setPhoto(e.target.value)}
+                aria-label="URL de la photo"
+              />
+            )}
+            {photoError && (
+              <p className="form-error" role="alert">
+                {photoError}
+              </p>
+            )}
+          </div>
         </div>
 
         <fieldset className="form-group">

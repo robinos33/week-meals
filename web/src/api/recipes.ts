@@ -50,6 +50,34 @@ export interface RecipeInput {
   steps: string[];
 }
 
+/** Réponse de présignature d'un upload photo (`POST /recipes/photos/presign`). */
+interface PhotoUpload {
+  upload_url: string;
+  public_url: string;
+}
+
+/**
+ * Upload d'une photo : présigne auprès de l'API, dépose le fichier directement
+ * sur le stockage (PUT présigné, sans passer par l'API), et renvoie l'URL
+ * publique à stocker dans la recette (champ `photo`).
+ */
+export async function uploadPhoto(file: File): Promise<string> {
+  const { upload_url, public_url } = await api.post<PhotoUpload>("/recipes/photos/presign", {
+    content_type: file.type,
+  });
+  // PUT direct au stockage : pas de cookie, et le `Content-Type` doit
+  // correspondre pour que l'objet soit servi avec le bon type.
+  const response = await fetch(upload_url, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type },
+  });
+  if (!response.ok) {
+    throw new Error(`Échec de l'upload (${response.status})`);
+  }
+  return public_url;
+}
+
 /** Temps total (préparation + cuisson) formaté, ou `null` si non renseigné. */
 export function totalTime(recipe: {
   prep_time_min: number | null;

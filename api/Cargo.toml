@@ -56,6 +56,9 @@ clap = { version = "4", features = ["derive"] }
 serde_yaml = "0.9"
 anyhow = "1"
 dotenvy = "0.15"
+rust-s3 = { version = "0.35", default-features = false, features = [
+    "tokio-rustls-tls",
+] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

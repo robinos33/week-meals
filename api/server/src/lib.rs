@@ -25,7 +25,8 @@ use auth::infrastructure::SqlxUserRepository;
 use auth::presentation::{self, AuthState};
 use meal_plan::infrastructure::SqlxMealPlanRepository;
 use meal_plan::presentation::MealPlanState;
-use recipes::infrastructure::SqlxRecipeRepository;
+use recipes::domain::PhotoStorage;
+use recipes::infrastructure::{R2Config, R2PhotoStorage, SqlxRecipeRepository};
 use recipes::presentation::RecipeState;
 
 /// Configuration HTTP lue depuis l'environnement.
@@ -113,6 +114,7 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
     };
     let recipe_state = RecipeState {
         recipes: Arc::new(SqlxRecipeRepository::new(pool.clone())),
+        photos: photo_storage_from_env(),
     };
     let meal_plan_state = MealPlanState {
         plan: Arc::new(SqlxMealPlanRepository::new(pool.clone())),
@@ -125,6 +127,32 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
         .merge(meal_plan::presentation::router(meal_plan_state))
         .layer(session_layer)
         .layer(cors)
+}
+
+/// Construit le stockage photo (R2/MinIO) depuis l'environnement, ou `None` si
+/// la configuration est incomplète — dans ce cas la présignature répond `503`
+/// et le front garde le champ URL en repli.
+fn photo_storage_from_env() -> Option<Arc<dyn PhotoStorage>> {
+    let var = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
+
+    let config = R2Config {
+        endpoint: var("R2_ENDPOINT")?,
+        region: var("R2_REGION").unwrap_or_else(|| "auto".to_owned()),
+        bucket: var("R2_BUCKET")?,
+        access_key: var("R2_ACCESS_KEY_ID")?,
+        secret_key: var("R2_SECRET_ACCESS_KEY")?,
+        public_base_url: var("R2_PUBLIC_BASE_URL")?,
+        // 15 min : le temps qu'un upload démarre, sans laisser traîner l'URL.
+        expiry_secs: 900,
+    };
+
+    match R2PhotoStorage::new(config) {
+        Ok(storage) => Some(Arc::new(storage)),
+        Err(error) => {
+            tracing::warn!("stockage photo désactivé : {error}");
+            None
+        }
+    }
 }
 
 /// Couche CORS restreinte à l'origine du front, cookies autorisés.
