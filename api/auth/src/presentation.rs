@@ -14,7 +14,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use kernel::{HouseholdId, UserId};
+use kernel::{HouseholdId, UserId, DEMO_HOUSEHOLD_ID};
 use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 use uuid::Uuid;
@@ -25,10 +25,6 @@ use crate::domain::UserRepository;
 
 /// Clé de stockage de l'identité en session.
 const SESSION_KEY: &str = "auth_user";
-
-/// Foyer de démonstration seedé par migration (`seed_demo_household`), sur
-/// lequel scope le mode public. UUID fixe partagé avec la migration SQL.
-pub const DEMO_HOUSEHOLD_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_0000_0000_0000_0000_0001);
 
 /// Utilisateur de démonstration servant d'identité en mode public. N'est pas
 /// persisté (les recettes ne référencent que le foyer) — un UUID fixe suffit.

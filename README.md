@@ -65,6 +65,25 @@ cargo run --manifest-path api/Cargo.toml -p server
 cd web && npm install && npm run dev
 ```
 
+### CLI — recettes en YAML (`weekmeals`)
+
+Le binaire `cli` (`weekmeals`) importe / exporte / seede les recettes au format
+YAML (contrat des seeds, cf. [`data/recipes/`](data/recipes/)). Il lit `.env`
+(`DATABASE_URL`) et cible le **foyer de démonstration** par défaut (`--household`
+pour un autre foyer).
+
+```sh
+alias weekmeals='cargo run --manifest-path api/Cargo.toml -p cli --'
+
+weekmeals seed                       # importe data/recipes/*.yaml (upsert idempotent)
+weekmeals import chemin/recette.yaml # importe un ou plusieurs fichiers
+weekmeals export --out ./mes-recettes  # un fichier .yaml par recette
+weekmeals export                     # ...ou sur stdout (documents séparés par ---)
+```
+
+L'import est **idempotent** : il fait un upsert par titre (dans le foyer), donc
+rejouer un seed ne crée pas de doublon.
+
 ### Mode public (preview sans compte)
 
 `.env.example` livre `AUTH_DISABLED=1` : l'API n'exige alors aucune session et

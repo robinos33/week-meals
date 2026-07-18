@@ -77,6 +77,13 @@ id_type! {
     InvitationId
 }
 
+/// Foyer de démonstration seedé par la migration `seed_demo_household`.
+///
+/// Cible du **mode public** (auth désactivée, cf. `AUTH_DISABLED`) et du **seed
+/// CLI**. UUID fixe : contrat partagé avec la migration SQL — ne pas le changer
+/// sans migration correspondante. Source unique, réutilisée par `auth` et `cli`.
+pub const DEMO_HOUSEHOLD_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_0000_0000_0000_0000_0001);
+
 #[cfg(test)]
 mod tests {
     use super::*;

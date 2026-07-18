@@ -1,0 +1,27 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "weekmeals"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+kernel = { workspace = true }
+recipes = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+dotenvy = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+serde_yaml = { workspace = true }
