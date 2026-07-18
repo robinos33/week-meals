@@ -77,6 +77,11 @@ id_type! {
     InvitationId
 }
 
+id_type! {
+    /// Identifiant d'une ligne de liste de courses.
+    ShoppingItemId
+}
+
 /// Foyer de démonstration seedé par la migration `seed_demo_household`.
 ///
 /// Cible du **mode public** (auth désactivée, cf. `AUTH_DISABLED`) et du **seed

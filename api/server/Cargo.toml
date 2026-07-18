@@ -12,6 +12,7 @@ kernel = { workspace = true }
 auth = { workspace = true }
 recipes = { workspace = true }
 meal-plan = { workspace = true }
+shopping-list = { workspace = true }
 axum = { workspace = true }
 tokio = { workspace = true }
 dotenvy = "0.15"
