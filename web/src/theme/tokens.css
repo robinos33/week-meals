@@ -1,7 +1,13 @@
 /*
  * Design tokens « Cantine » — vert potager, net et lisible.
  *
- * Conception en clair (cf. brief) ; le dark mode arrivera dans un second temps.
+ * Thème clair par défaut (conception en clair, cf. brief). Le thème sombre
+ * (« Cantine sombre », #27) est dérivé ici et s'applique de deux façons :
+ *   - automatiquement via `prefers-color-scheme: dark` ;
+ *   - explicitement via `:root[data-theme="dark"|"light"]`, posé par la bascule
+ *     des Paramètres — qui l'emporte donc sur la préférence système, dans les
+ *     deux sens.
+ *
  * Contrastes visés WCAG AA (≥ 4.5:1 texte normal) : texte/bg, texte muet/bg,
  * on-primary/primary.
  */
@@ -40,4 +46,37 @@
   --tabbar-height: 60px;
 
   color-scheme: light;
+}
+
+/*
+ * Dérivation sombre — une seule liste de valeurs.
+ *
+ * `data-theme` est la source unique : il porte toujours le thème *résolu*
+ * (`light` ou `dark`), y compris en préférence « Système ». C'est le script
+ * inline d'`index.html` qui le pose avant le premier paint (donc pas de flash),
+ * puis le `ThemeProvider` qui le tient à jour.
+ *
+ * On ne duplique donc pas ce bloc dans un `@media (prefers-color-scheme: dark)` :
+ * la résolution du réglage système se fait en un seul endroit, en JS. Sans JS
+ * l'app ne s'affiche pas du tout (SPA React), la question ne se pose pas.
+ */
+:root[data-theme="dark"] {
+  --color-bg: #14201a;
+  --color-surface: #1c2a22;
+  --color-surface-2: #24352b;
+  --color-border: #304538;
+
+  --color-text: #e9f0ea;
+  --color-muted: #a1b2a6;
+
+  --color-primary: #74c090; /* vert clair : AA avec texte sombre */
+  --color-primary-strong: #93d3ab;
+  --color-primary-tint: #21332a;
+  --color-on-primary: #0e1a13;
+
+  --color-accent: #e39a5f;
+  --color-danger: #e2725a;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
 }

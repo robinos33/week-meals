@@ -15,6 +15,34 @@
     <meta name="apple-mobile-web-app-title" content="Week Meals" />
     <meta name="description" content="Recettes, semaine et liste de courses intelligente." />
     <title>Week Meals</title>
+    <!--
+      Thème appliqué avant le premier paint : sans ça, un utilisateur ayant
+      forcé « Clair » sur un appareil en sombre (ou l'inverse) verrait un flash
+      du mauvais thème le temps que React monte. Doit rester synchrone et sans
+      dépendance — le ThemeProvider prend le relais ensuite (mêmes clés).
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("week-meals.theme");
+          var preference =
+            stored === "light" || stored === "dark" ? stored : "system";
+          var resolved =
+            preference === "system"
+              ? matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : preference;
+          document.documentElement.setAttribute("data-theme", resolved);
+          document
+            .querySelector('meta[name="theme-color"]')
+            .setAttribute("content", resolved === "dark" ? "#1c2a22" : "#3f7d54");
+        } catch (e) {
+          // Stockage indisponible (mode privé) : on reste en clair, le
+          // ThemeProvider corrigera au montage.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

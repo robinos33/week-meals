@@ -297,6 +297,29 @@
   margin-bottom: 0.75rem;
 }
 
+/* --- Sélecteur de thème (segmented) --------------------------------------- */
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.segmented button {
+  min-height: var(--tap-target);
+  padding: 0 1rem;
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.segmented button[data-active="true"] {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
 /* --- Champs de formulaire -------------------------------------------------- */
 
 .field label,
