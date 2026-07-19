@@ -1,4 +1,12 @@
-import { useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import {
   formatQuantity,
   UNITS,
@@ -6,6 +14,7 @@ import {
   useAddItem,
   useClearChecked,
   useDeleteItem,
+  useReorderItems,
   useShoppingList,
   useUpdateItem,
   type ShoppingItem,
@@ -63,11 +72,7 @@ export function ShoppingScreen() {
         </div>
       ) : (
         <>
-          <ul className="shopping-list">
-            {pending.map((item) => (
-              <ShoppingRow key={item.id} item={item} />
-            ))}
-          </ul>
+          <PendingList items={pending} tailIds={done.map((item) => item.id)} />
 
           {done.length > 0 && (
             <div className="checked-section">
@@ -92,6 +97,102 @@ export function ShoppingScreen() {
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Liste des articles à cocher, réordonnable par glisser-déposer via la poignée.
+ *
+ * Le drag est géré aux Pointer Events (tactile + souris, sans dépendance) :
+ * l'ordre local suit le doigt en échangeant avec la ligne voisine dès que son
+ * milieu est franchi, et n'est persisté qu'au relâchement. `tailIds` (les
+ * lignes cochées) est réémis à la suite pour garder un ordre global cohérent.
+ */
+function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: string[] }) {
+  const reorder = useReorderItems();
+  const [order, setOrder] = useState(items);
+  // Ordre courant en ref : lu de façon synchrone pendant le glissement (l'état
+  // React n'est pas encore à jour au moment du `pointerup`).
+  const orderRef = useRef(items);
+  const listRef = useRef<HTMLUListElement>(null);
+  const draggingId = useRef<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Resynchronise sur le serveur, sauf pendant un glissement en cours.
+  useEffect(() => {
+    if (!draggingId.current) {
+      orderRef.current = items;
+      setOrder(items);
+    }
+  }, [items]);
+
+  /** Place la ligne glissée au slot correspondant à l'ordonnée `y` du doigt. */
+  function reposition(y: number) {
+    const id = draggingId.current;
+    if (!id) return;
+    const current = orderRef.current;
+    const from = current.findIndex((item) => item.id === id);
+    const rows = Array.from(listRef.current?.children ?? []) as HTMLElement[];
+
+    // Slot cible = première ligne dont le milieu passe sous le doigt.
+    let target = rows.findIndex((row) => {
+      const rect = row.getBoundingClientRect();
+      return y < rect.top + rect.height / 2;
+    });
+    if (target === -1) target = rows.length - 1;
+    else if (target > from) target -= 1; // on retire d'abord la ligne glissée
+
+    if (target !== from && target >= 0) {
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(target, 0, moved);
+      orderRef.current = next;
+      setOrder(next);
+    }
+  }
+
+  function onPointerDown(event: ReactPointerEvent, id: string) {
+    event.preventDefault();
+    draggingId.current = id;
+    setActiveId(id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerMove(event: ReactPointerEvent) {
+    reposition(event.clientY);
+  }
+
+  function onPointerUp(event: ReactPointerEvent) {
+    if (!draggingId.current) return;
+    reposition(event.clientY); // capte la position de relâchement
+    draggingId.current = null;
+    setActiveId(null);
+    reorder.mutate([...orderRef.current.map((item) => item.id), ...tailIds]);
+  }
+
+  return (
+    <ul className="shopping-list" ref={listRef}>
+      {order.map((item) => (
+        <ShoppingRow
+          key={item.id}
+          item={item}
+          dragging={activeId === item.id}
+          handle={
+            <button
+              className="shopping-row__handle"
+              type="button"
+              aria-label={`Déplacer ${item.name}`}
+              onPointerDown={(event) => onPointerDown(event, item.id)}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            >
+              ≡
+            </button>
+          }
+        />
+      ))}
+    </ul>
   );
 }
 
@@ -151,8 +252,16 @@ function QuickAdd({
   );
 }
 
-/** Une ligne : case à cocher, texte (tap = édition inline), suppression. */
-function ShoppingRow({ item }: { item: ShoppingItem }) {
+/** Une ligne : poignée optionnelle, case à cocher, texte (tap = édition), suppression. */
+function ShoppingRow({
+  item,
+  handle,
+  dragging = false,
+}: {
+  item: ShoppingItem;
+  handle?: ReactNode;
+  dragging?: boolean;
+}) {
   const updateItem = useUpdateItem();
   const deleteItem = useDeleteItem();
   const [editing, setEditing] = useState(false);
@@ -173,7 +282,8 @@ function ShoppingRow({ item }: { item: ShoppingItem }) {
   }
 
   return (
-    <li className="shopping-row" data-checked={item.checked}>
+    <li className="shopping-row" data-checked={item.checked} data-dragging={dragging}>
+      {handle}
       <input
         type="checkbox"
         className="shopping-row__check"

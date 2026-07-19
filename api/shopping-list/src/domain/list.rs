@@ -94,6 +94,14 @@ pub trait ShoppingListRepository: Send + Sync {
 
     /// Supprime toutes les lignes cochées du foyer, et renvoie leur nombre.
     async fn clear_checked(&self, household_id: HouseholdId) -> Result<u64, RepositoryError>;
+
+    /// Fixe l'ordre d'affichage : chaque identifiant reçoit pour `position` son
+    /// rang dans `ordered_ids`. Les identifiants d'un autre foyer sont ignorés.
+    async fn reorder(
+        &self,
+        household_id: HouseholdId,
+        ordered_ids: &[ShoppingItemId],
+    ) -> Result<(), RepositoryError>;
 }
 
 /// Port de lecture du référentiel d'ingrédients (catalogue global, seedé

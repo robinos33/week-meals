@@ -86,12 +86,12 @@ fn item_from_row(
 #[async_trait::async_trait]
 impl ShoppingListRepository for SqlxShoppingListRepository {
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<ShoppingItem>, RepositoryError> {
-        // Générées d'abord (dans l'ordre du service de conversion), puis les
-        // ajouts manuels par ancienneté.
+        // `position` porte l'ordre d'affichage (réordonnable par glisser-déposer) ;
+        // `created_at` départage d'éventuelles positions égales.
         let rows = sqlx::query(&format!(
             "select {ITEM_COLUMNS} from shopping_list_items \
              where household_id = $1 \
-             order by generated desc, position, created_at"
+             order by position, created_at"
         ))
         .bind(household_id.as_uuid())
         .fetch_all(&self.pool)
@@ -135,7 +135,19 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
             .await
             .map_err(backend)?;
 
-        for item in items {
+        // Les lignes générées occupent les positions `0..n` ; on décale les
+        // ajouts manuels restants pour qu'ils s'affichent en dessous, sans
+        // collision (leur ordre relatif est préservé).
+        let shift = i32::try_from(items.len()).unwrap_or(i32::MAX);
+        sqlx::query("update shopping_list_items set position = position + $2 where household_id = $1")
+            .bind(household_id.as_uuid())
+            .bind(shift)
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+
+        for (index, item) in items.iter().enumerate() {
+            let position = i32::try_from(index).unwrap_or(i32::MAX);
             sqlx::query(
                 "insert into shopping_list_items \
                  (id, household_id, name, amount, unit, category, checked, generated, position) \
@@ -148,7 +160,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
             .bind(item.quantity.unit().as_str())
             .bind(item.category.as_deref())
             .bind(item.checked)
-            .bind(item.position)
+            .bind(position)
             .execute(&mut *tx)
             .await
             .map_err(backend)?;
@@ -158,10 +170,12 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
     }
 
     async fn add(&self, item: &ShoppingItem) -> Result<(), RepositoryError> {
+        // Position calculée en base : la ligne s'ajoute en fin de liste.
         sqlx::query(
             "insert into shopping_list_items \
              (id, household_id, name, amount, unit, category, checked, generated, position) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+             values ($1, $2, $3, $4, $5, $6, $7, $8, \
+               coalesce((select max(position) + 1 from shopping_list_items where household_id = $2), 0))",
         )
         .bind(item.id.as_uuid())
         .bind(item.household_id.as_uuid())
@@ -171,11 +185,32 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         .bind(item.category.as_deref())
         .bind(item.checked)
         .bind(item.generated)
-        .bind(item.position)
         .execute(&self.pool)
         .await
         .map_err(backend)?;
         Ok(())
+    }
+
+    async fn reorder(
+        &self,
+        household_id: HouseholdId,
+        ordered_ids: &[ShoppingItemId],
+    ) -> Result<(), RepositoryError> {
+        // En transaction : l'ordre ne doit jamais être observé à moitié appliqué.
+        // Le filtre `household_id` empêche de bouger une ligne d'un autre foyer.
+        let mut tx = self.pool.begin().await.map_err(backend)?;
+        for (index, id) in ordered_ids.iter().enumerate() {
+            sqlx::query(
+                "update shopping_list_items set position = $3 where id = $1 and household_id = $2",
+            )
+            .bind(id.as_uuid())
+            .bind(household_id.as_uuid())
+            .bind(i32::try_from(index).unwrap_or(i32::MAX))
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+        }
+        tx.commit().await.map_err(backend)
     }
 
     async fn update(&self, item: &ShoppingItem) -> Result<(), RepositoryError> {
