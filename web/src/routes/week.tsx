@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useGenerateList } from "../api/shopping-list";
 import {
   useClearEntry,
   useRecipeSummaries,
@@ -47,6 +49,8 @@ export function WeekScreen() {
   const recipesQuery = useRecipeSummaries();
   const setEntry = useSetEntry();
   const clearEntry = useClearEntry();
+  const generateList = useGenerateList();
+  const navigate = useNavigate();
 
   // Créneau en cours de remplissage (picker ouvert), ou `null`.
   const [picking, setPicking] = useState<{ date: string; slot: MealSlot } | null>(null);
@@ -73,8 +77,19 @@ export function WeekScreen() {
     <section>
       <header className="screen__header">
         <h1 className="screen__title">Semaine</h1>
-        <button className="btn" type="button">
-          Liste de courses
+        <button
+          className="btn"
+          type="button"
+          disabled={generateList.isPending}
+          onClick={() =>
+            // Génère sur la semaine affichée, puis bascule sur l'onglet Courses.
+            generateList.mutate(
+              { from, to },
+              { onSuccess: () => void navigate({ to: "/shopping" }) },
+            )
+          }
+        >
+          {generateList.isPending ? "Génération…" : "Liste de courses"}
         </button>
       </header>
 
