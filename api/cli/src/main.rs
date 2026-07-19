@@ -7,6 +7,7 @@
 
 mod ingredient_yaml;
 mod recipe_yaml;
+mod scrape;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -71,6 +72,14 @@ enum Command {
         #[arg(long, default_value = "data/ingredients.yaml")]
         file: PathBuf,
     },
+    /// Extrait une recette d'une page web vers le YAML de seed (brouillon à relire).
+    Scrape {
+        /// URL de la page de recette.
+        url: String,
+        /// Fichier de sortie. Défaut : stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -78,6 +87,24 @@ async fn main() -> Result<()> {
     // Charge `.env` (dev local) ; en CI/prod l'environnement est déjà injecté.
     let _ = dotenvy::dotenv();
     let cli = Cli::parse();
+
+    // Le scraping ne touche pas la base : inutile d'exiger DATABASE_URL.
+    if let Command::Scrape { url, out } = &cli.command {
+        let recipe = scrape::scrape(url).await?;
+        let yaml = serde_yaml::to_string(&recipe).context("sérialisation YAML")?;
+        match out {
+            Some(path) => {
+                std::fs::write(path, &yaml)
+                    .with_context(|| format!("écriture de {}", path.display()))?;
+                println!(
+                    "Recette écrite dans {} — à relire avant import.",
+                    path.display()
+                );
+            }
+            None => print!("{yaml}"),
+        }
+        return Ok(());
+    }
 
     let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL doit être défini")?;
     let pool = PgPoolOptions::new()
@@ -102,6 +129,8 @@ async fn main() -> Result<()> {
             let count = import_files(&repo, household, &paths).await?;
             println!("{count} recette(s) seedée(s) dans le foyer {household}.");
         }
+        // Traité plus haut, avant l'ouverture du pool.
+        Command::Scrape { .. } => unreachable!("scrape est traité avant la base"),
         Command::Export { out, household } => {
             let household = resolve_household(household);
             export(&repo, household, out.as_deref()).await?;
