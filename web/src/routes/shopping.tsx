@@ -20,6 +20,7 @@ import {
   type ShoppingItem,
   type Unit,
 } from "../api/shopping-list";
+import { foodEmoji } from "../lib/food-emoji";
 import "./screens.css";
 
 /**
@@ -265,6 +266,7 @@ function ShoppingRow({
   const updateItem = useUpdateItem();
   const deleteItem = useDeleteItem();
   const [editing, setEditing] = useState(false);
+  const emoji = foodEmoji(item.name);
 
   if (editing) {
     return (
@@ -297,6 +299,9 @@ function ShoppingRow({
         onClick={() => setEditing(true)}
         aria-label={`Modifier ${item.name}`}
       >
+        <span className="shopping-row__emoji" aria-hidden="true">
+          {emoji ?? "•"}
+        </span>
         <span className="shopping-row__qty">{formatQuantity(item)}</span>
         <span className="shopping-row__name">{item.name}</span>
       </button>
