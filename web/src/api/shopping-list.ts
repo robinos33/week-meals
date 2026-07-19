@@ -114,6 +114,26 @@ export function useGenerateList() {
   });
 }
 
+/** Nom normalisé pour comparer deux articles (casse et espaces ignorés). */
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * Deux articles partagent-ils le même combo **produit / quantité / unité** ?
+ * Sert à garantir l'unicité côté saisie (pas de doublon exact dans la liste).
+ */
+export function sameCombo(
+  item: Pick<ShoppingItem, "name" | "amount" | "unit">,
+  candidate: { name: string; amount: number; unit: Unit },
+): boolean {
+  return (
+    normalizeName(item.name) === normalizeName(candidate.name) &&
+    Math.abs(item.amount - candidate.amount) < 1e-9 &&
+    item.unit === candidate.unit
+  );
+}
+
 /** Quantité formatée pour l'affichage (`3 pièce(s)`, `250 g`). */
 export function formatQuantity(item: ShoppingItem): string {
   // Les quantités sont des flottants côté API : on évite « 250.0 g ».

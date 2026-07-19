@@ -14,6 +14,7 @@ import {
   useAddItem,
   useClearChecked,
   useDeleteItem,
+  sameCombo,
   useReorderItems,
   useShoppingList,
   useUpdateItem,
@@ -30,6 +31,7 @@ import "./screens.css";
 export function ShoppingScreen() {
   const query = useShoppingList();
   const addItem = useAddItem();
+  const updateItem = useUpdateItem();
   const clearChecked = useClearChecked();
   const [showChecked, setShowChecked] = useState(true);
 
@@ -53,7 +55,12 @@ export function ShoppingScreen() {
         )}
       </header>
 
-      <QuickAdd onAdd={(item) => addItem.mutate(item)} pending={addItem.isPending} />
+      <QuickAdd
+        items={items}
+        onAdd={(item) => addItem.mutate(item)}
+        onRestore={(item) => updateItem.mutate({ id: item.id, checked: false })}
+        pending={addItem.isPending}
+      />
 
       {query.isLoading ? (
         <p className="muted">Chargement…</p>
@@ -197,25 +204,65 @@ function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: strin
   );
 }
 
-/** Champ d'ajout rapide, toujours accessible en haut de l'écran. */
+/**
+ * Champ d'ajout rapide, toujours accessible en haut de l'écran.
+ *
+ * Le combo **produit / quantité / unité** est unique : en tapant, si le même
+ * combo est déjà présent (non coché) on prévient et on bloque l'ajout ; s'il
+ * n'existe que **coché**, on propose de le remettre dans la liste (décoché)
+ * plutôt que de créer un doublon.
+ */
 function QuickAdd({
+  items,
   onAdd,
+  onRestore,
   pending,
 }: {
+  items: ShoppingItem[];
   onAdd: (item: { name: string; amount: number; unit: Unit }) => void;
+  onRestore: (item: ShoppingItem) => void;
   pending: boolean;
 }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("1");
   const [unit, setUnit] = useState<Unit>("piece");
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const parsed = Number(amount.replace(",", "."));
-    if (!name.trim() || !Number.isFinite(parsed) || parsed <= 0) return;
-    onAdd({ name: name.trim(), amount: parsed, unit });
+  // Candidat courant (null tant que la saisie n'est pas valide).
+  const parsed = Number(amount.replace(",", "."));
+  const candidate =
+    name.trim() && Number.isFinite(parsed) && parsed > 0
+      ? { name: name.trim(), amount: parsed, unit }
+      : null;
+
+  // Même combo déjà dans la liste : bloquant s'il est actif, « remettable »
+  // s'il n'y est plus que coché.
+  const duplicate = candidate
+    ? items.find((item) => !item.checked && sameCombo(item, candidate))
+    : undefined;
+  const restorable =
+    candidate && !duplicate
+      ? items.find((item) => item.checked && sameCombo(item, candidate))
+      : undefined;
+
+  function reset() {
     setName("");
     setAmount("1");
+  }
+
+  function restore(item: ShoppingItem) {
+    onRestore(item);
+    reset();
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!candidate || duplicate) return;
+    if (restorable) {
+      restore(restorable); // même combo coché : on le remet plutôt que dupliquer
+      return;
+    }
+    onAdd(candidate);
+    reset();
   }
 
   return (
@@ -246,9 +293,29 @@ function QuickAdd({
           </option>
         ))}
       </select>
-      <button className="btn btn--primary" type="submit" disabled={pending}>
+      <button
+        className="btn btn--primary"
+        type="submit"
+        disabled={pending || Boolean(duplicate)}
+      >
         +
       </button>
+
+      {duplicate && (
+        <p className="quick-add__note quick-add__note--warn" role="status">
+          Déjà dans la liste.
+        </p>
+      )}
+      {restorable && (
+        <button
+          type="button"
+          className="quick-add__note quick-add__restore"
+          onClick={() => restore(restorable)}
+        >
+          « {formatQuantity(restorable)} {restorable.name} » est coché — le remettre dans la
+          liste ?
+        </button>
+      )}
     </form>
   );
 }
