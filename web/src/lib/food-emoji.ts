@@ -2,10 +2,6 @@
  * Devine l'emoji d'un aliment à partir de son nom (français), pour l'afficher
  * automatiquement dans la liste de courses sans que l'utilisateur le saisisse.
  *
- * On se limite à des emojis largement supportés sur les différents OS (pas de
- * pictos trop récents comme les pois 🫛 ou le gingembre 🫚) pour éviter les
- * carrés « tofu » sur les appareils un peu anciens.
- *
  * Le rapprochement se fait par **mots entiers** : on découpe le nom en jetons
  * normalisés (minuscules, sans accent) et une règle matche si ses mots
  * apparaissent tels quels (le pluriel régulier en `-s` est toléré). Ainsi
@@ -87,6 +83,9 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["haricot", "🫘"],
   ["lentille", "🫘"],
   ["pois chiche", "🫘"],
+  ["petit pois", "🫛"],
+  ["pois", "🫛"],
+  ["gingembre", "🫚"],
 
   // Féculents & pain.
   ["pain", "🍞"],

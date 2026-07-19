@@ -29,6 +29,12 @@ describe("foodEmoji", () => {
     expect(foodEmoji("patate douce")).toBe("🍠");
   });
 
+  it("distingue le pois chiche du petit pois", () => {
+    expect(foodEmoji("pois chiche")).toBe("🫘");
+    expect(foodEmoji("petit pois")).toBe("🫛");
+    expect(foodEmoji("gingembre")).toBe("🫚");
+  });
+
   it("ne confond pas la pâte à tarte avec les pâtes", () => {
     expect(foodEmoji("pâte brisée")).toBeNull();
     expect(foodEmoji("pâtes")).toBe("🍝");
