@@ -371,6 +371,18 @@
   font-size: 0.95rem;
 }
 
+/* Emoji d'aliment deviné (colonne fixe pour aligner les libellés) ; à défaut
+   d'emoji, une puce discrète tient la place. */
+.shopping-row__emoji {
+  flex: 0 0 auto;
+  width: 1.4em;
+  text-align: center;
+  font-size: 1.05rem;
+  line-height: 1;
+  /* N'affecte que la puce de repli : les emojis gardent leurs couleurs. */
+  color: var(--color-muted);
+}
+
 .shopping-row__qty {
   flex: 0 0 auto;
   font-weight: 600;
