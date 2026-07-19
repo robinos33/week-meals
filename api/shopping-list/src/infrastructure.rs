@@ -139,12 +139,14 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         // ajouts manuels restants pour qu'ils s'affichent en dessous, sans
         // collision (leur ordre relatif est préservé).
         let shift = i32::try_from(items.len()).unwrap_or(i32::MAX);
-        sqlx::query("update shopping_list_items set position = position + $2 where household_id = $1")
-            .bind(household_id.as_uuid())
-            .bind(shift)
-            .execute(&mut *tx)
-            .await
-            .map_err(backend)?;
+        sqlx::query(
+            "update shopping_list_items set position = position + $2 where household_id = $1",
+        )
+        .bind(household_id.as_uuid())
+        .bind(shift)
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
 
         for (index, item) in items.iter().enumerate() {
             let position = i32::try_from(index).unwrap_or(i32::MAX);
