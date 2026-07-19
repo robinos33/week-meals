@@ -26,8 +26,8 @@ use uuid::Uuid;
 use crate::application::commands::{
     AddItemCommand, AddItemHandler, AddItemResponse, ClearCheckedCommand, ClearCheckedHandler,
     ClearCheckedResponse, DeleteItemCommand, DeleteItemHandler, DeleteItemResponse,
-    GenerateListCommand, GenerateListHandler, GenerateListResponse, UpdateItemCommand,
-    UpdateItemHandler, UpdateItemResponse,
+    GenerateListCommand, GenerateListHandler, GenerateListResponse, ReorderCommand, ReorderHandler,
+    ReorderResponse, UpdateItemCommand, UpdateItemHandler, UpdateItemResponse,
 };
 use crate::application::queries::{GetListHandler, GetListQuery, GetListResponse};
 use crate::domain::{
@@ -50,6 +50,7 @@ pub fn router(state: ShoppingListState) -> Router {
     Router::new()
         .route("/shopping-list", get(list))
         .route("/shopping-list/generate", post(generate))
+        .route("/shopping-list/reorder", post(reorder))
         .route("/shopping-list/items", post(add))
         .route(
             "/shopping-list/items/{id}",
@@ -121,6 +122,12 @@ struct AddBody {
     unit: Unit,
 }
 
+/// Corps d'un réordonnancement : identifiants dans l'ordre voulu.
+#[derive(Debug, Deserialize)]
+struct ReorderBody {
+    ids: Vec<Uuid>,
+}
+
 /// Corps d'une édition : tout est optionnel (champs absents = inchangés).
 #[derive(Debug, Deserialize)]
 struct UpdateBody {
@@ -176,6 +183,25 @@ async fn generate(
         }
         GenerateListResponse::InvalidRange => invalid("plage invalide (from après to)".to_owned()),
         GenerateListResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `POST /shopping-list/reorder` — fixe l'ordre d'affichage des lignes.
+async fn reorder(
+    user: AuthUser,
+    State(state): State<ShoppingListState>,
+    Json(body): Json<ReorderBody>,
+) -> impl IntoResponse {
+    let ordered_ids = body.ids.into_iter().map(ShoppingItemId::from).collect();
+    let response = ReorderHandler::new(state.items.as_ref())
+        .handle(ReorderCommand {
+            household_id: user.household_id(),
+            ordered_ids,
+        })
+        .await;
+    match response {
+        ReorderResponse::Reordered => StatusCode::NO_CONTENT.into_response(),
+        ReorderResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 

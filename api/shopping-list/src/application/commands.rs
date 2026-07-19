@@ -350,6 +350,51 @@ impl<'a> ClearCheckedHandler<'a> {
     }
 }
 
+// --- Réordonnancement -----------------------------------------------------
+
+/// Command : fixe l'ordre d'affichage des lignes.
+#[derive(Debug, Clone)]
+pub struct ReorderCommand {
+    /// Foyer propriétaire (scope).
+    pub household_id: HouseholdId,
+    /// Identifiants dans l'ordre voulu.
+    pub ordered_ids: Vec<ShoppingItemId>,
+}
+
+/// Résultat d'un réordonnancement.
+#[derive(Debug)]
+pub enum ReorderResponse {
+    /// Ordre appliqué.
+    Reordered,
+    /// Panne technique.
+    Unavailable,
+}
+
+/// Handler du réordonnancement.
+pub struct ReorderHandler<'a> {
+    items: &'a dyn ShoppingListRepository,
+}
+
+impl<'a> ReorderHandler<'a> {
+    /// Construit le handler.
+    #[must_use]
+    pub fn new(items: &'a dyn ShoppingListRepository) -> Self {
+        Self { items }
+    }
+
+    /// Exécute le réordonnancement. Ne renvoie jamais d'erreur.
+    pub async fn handle(&self, command: ReorderCommand) -> ReorderResponse {
+        match self
+            .items
+            .reorder(command.household_id, &command.ordered_ids)
+            .await
+        {
+            Ok(()) => ReorderResponse::Reordered,
+            Err(_) => ReorderResponse::Unavailable,
+        }
+    }
+}
+
 /// Message lisible pour une quantité refusée par le `kernel`.
 fn quantity_error(error: QuantityError) -> String {
     format!("quantité invalide : {error}")

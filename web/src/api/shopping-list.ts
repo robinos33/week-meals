@@ -95,6 +95,15 @@ export function useClearChecked() {
   });
 }
 
+/** Fixe l'ordre d'affichage (glisser-déposer) : `ids` dans l'ordre voulu. */
+export function useReorderItems() {
+  const invalidate = useListInvalidation();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.post<void>("/shopping-list/reorder", { ids }),
+    onSuccess: invalidate,
+  });
+}
+
 /** (Re)génère la liste depuis le calendrier, sur une plage de jours. */
 export function useGenerateList() {
   const invalidate = useListInvalidation();
