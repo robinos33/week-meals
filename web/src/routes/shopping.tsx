@@ -8,12 +8,14 @@ import {
   type ReactNode,
 } from "react";
 import {
+  adjustQuantity,
   formatQuantity,
   UNITS,
   UNIT_LABELS,
   useAddItem,
   useClearChecked,
   useDeleteItem,
+  sameCombo,
   useReorderItems,
   useShoppingList,
   useUpdateItem,
@@ -30,6 +32,7 @@ import "./screens.css";
 export function ShoppingScreen() {
   const query = useShoppingList();
   const addItem = useAddItem();
+  const updateItem = useUpdateItem();
   const clearChecked = useClearChecked();
   const [showChecked, setShowChecked] = useState(true);
 
@@ -53,7 +56,12 @@ export function ShoppingScreen() {
         )}
       </header>
 
-      <QuickAdd onAdd={(item) => addItem.mutate(item)} pending={addItem.isPending} />
+      <QuickAdd
+        items={items}
+        onAdd={(item) => addItem.mutate(item)}
+        onRestore={(item) => updateItem.mutate({ id: item.id, checked: false })}
+        pending={addItem.isPending}
+      />
 
       {query.isLoading ? (
         <p className="muted">Chargement…</p>
@@ -197,25 +205,117 @@ function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: strin
   );
 }
 
-/** Champ d'ajout rapide, toujours accessible en haut de l'écran. */
+/**
+ * Sélecteur de quantité tactile : boutons − / + de part et d'autre d'un champ
+ * numérique, avec un pas adapté à l'unité (1 pièce, 50 g/mL, 0,5 kg/L).
+ */
+function QuantityStepper({
+  value,
+  unit,
+  onChange,
+  ariaLabel = "Quantité",
+}: {
+  value: string;
+  unit: Unit;
+  onChange: (value: string) => void;
+  ariaLabel?: string;
+}) {
+  function step(direction: 1 | -1) {
+    const current = Number(value.replace(",", ".")) || 0;
+    onChange(String(adjustQuantity(current, unit, direction)));
+  }
+
+  return (
+    <div className="stepper">
+      <button
+        type="button"
+        className="stepper__btn"
+        aria-label="Diminuer la quantité"
+        onClick={() => step(-1)}
+      >
+        −
+      </button>
+      <input
+        type="number"
+        className="stepper__value"
+        aria-label={ariaLabel}
+        inputMode="decimal"
+        min="0"
+        step="any"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        type="button"
+        className="stepper__btn"
+        aria-label="Augmenter la quantité"
+        onClick={() => step(1)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Champ d'ajout rapide, toujours accessible en haut de l'écran.
+ *
+ * Le combo **produit / quantité / unité** est unique : en tapant, si le même
+ * combo est déjà présent (non coché) on prévient et on bloque l'ajout ; s'il
+ * n'existe que **coché**, on propose de le remettre dans la liste (décoché)
+ * plutôt que de créer un doublon.
+ */
 function QuickAdd({
+  items,
   onAdd,
+  onRestore,
   pending,
 }: {
+  items: ShoppingItem[];
   onAdd: (item: { name: string; amount: number; unit: Unit }) => void;
+  onRestore: (item: ShoppingItem) => void;
   pending: boolean;
 }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("1");
   const [unit, setUnit] = useState<Unit>("piece");
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    const parsed = Number(amount.replace(",", "."));
-    if (!name.trim() || !Number.isFinite(parsed) || parsed <= 0) return;
-    onAdd({ name: name.trim(), amount: parsed, unit });
+  // Candidat courant (null tant que la saisie n'est pas valide).
+  const parsed = Number(amount.replace(",", "."));
+  const candidate =
+    name.trim() && Number.isFinite(parsed) && parsed > 0
+      ? { name: name.trim(), amount: parsed, unit }
+      : null;
+
+  // Même combo déjà dans la liste : bloquant s'il est actif, « remettable »
+  // s'il n'y est plus que coché.
+  const duplicate = candidate
+    ? items.find((item) => !item.checked && sameCombo(item, candidate))
+    : undefined;
+  const restorable =
+    candidate && !duplicate
+      ? items.find((item) => item.checked && sameCombo(item, candidate))
+      : undefined;
+
+  function reset() {
     setName("");
     setAmount("1");
+  }
+
+  function restore(item: ShoppingItem) {
+    onRestore(item);
+    reset();
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!candidate || duplicate) return;
+    if (restorable) {
+      restore(restorable); // même combo coché : on le remet plutôt que dupliquer
+      return;
+    }
+    onAdd(candidate);
+    reset();
   }
 
   return (
@@ -227,13 +327,7 @@ function QuickAdd({
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      <input
-        className="input input--amount"
-        aria-label="Quantité"
-        inputMode="decimal"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-      />
+      <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
       <select
         className="input input--unit"
         aria-label="Unité"
@@ -246,9 +340,30 @@ function QuickAdd({
           </option>
         ))}
       </select>
-      <button className="btn btn--primary" type="submit" disabled={pending}>
+      <button
+        className="btn btn--primary"
+        type="submit"
+        aria-label="Ajouter à la liste"
+        disabled={pending || Boolean(duplicate)}
+      >
         +
       </button>
+
+      {duplicate && (
+        <p className="quick-add__note quick-add__note--warn" role="status">
+          Déjà dans la liste.
+        </p>
+      )}
+      {restorable && (
+        <button
+          type="button"
+          className="quick-add__note quick-add__restore"
+          onClick={() => restore(restorable)}
+        >
+          « {formatQuantity(restorable)} {restorable.name} » est coché — le remettre dans la
+          liste ?
+        </button>
+      )}
     </form>
   );
 }
@@ -347,13 +462,7 @@ function InlineEdit({
         onChange={(e) => setName(e.target.value)}
         autoFocus
       />
-      <input
-        className="input input--amount"
-        aria-label="Quantité"
-        inputMode="decimal"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-      />
+      <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
       <select
         className="input input--unit"
         aria-label="Unité"
