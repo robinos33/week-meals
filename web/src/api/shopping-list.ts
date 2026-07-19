@@ -134,6 +134,23 @@ export function sameCombo(
   );
 }
 
+/** Pas d'incrément adapté à l'unité pour le sélecteur de quantité. */
+export function quantityStep(unit: Unit): number {
+  if (unit === "piece") return 1;
+  if (unit === "kg" || unit === "l") return 0.5;
+  return 50; // g, mL
+}
+
+/**
+ * Ajuste une quantité d'un cran (±1 pas), en restant strictement positive et
+ * sans bavure de flottant (`0.1 + 0.5`…).
+ */
+export function adjustQuantity(amount: number, unit: Unit, direction: 1 | -1): number {
+  const step = quantityStep(unit);
+  const next = amount + direction * step;
+  return Math.max(step, Math.round(next * 100) / 100);
+}
+
 /** Quantité formatée pour l'affichage (`3 pièce(s)`, `250 g`). */
 export function formatQuantity(item: ShoppingItem): string {
   // Les quantités sont des flottants côté API : on évite « 250.0 g ».

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  adjustQuantity,
   formatQuantity,
   UNITS,
   UNIT_LABELS,
@@ -205,6 +206,58 @@ function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: strin
 }
 
 /**
+ * Sélecteur de quantité tactile : boutons − / + de part et d'autre d'un champ
+ * numérique, avec un pas adapté à l'unité (1 pièce, 50 g/mL, 0,5 kg/L).
+ */
+function QuantityStepper({
+  value,
+  unit,
+  onChange,
+  ariaLabel = "Quantité",
+}: {
+  value: string;
+  unit: Unit;
+  onChange: (value: string) => void;
+  ariaLabel?: string;
+}) {
+  function step(direction: 1 | -1) {
+    const current = Number(value.replace(",", ".")) || 0;
+    onChange(String(adjustQuantity(current, unit, direction)));
+  }
+
+  return (
+    <div className="stepper">
+      <button
+        type="button"
+        className="stepper__btn"
+        aria-label="Diminuer la quantité"
+        onClick={() => step(-1)}
+      >
+        −
+      </button>
+      <input
+        type="number"
+        className="stepper__value"
+        aria-label={ariaLabel}
+        inputMode="decimal"
+        min="0"
+        step="any"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        type="button"
+        className="stepper__btn"
+        aria-label="Augmenter la quantité"
+        onClick={() => step(1)}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+/**
  * Champ d'ajout rapide, toujours accessible en haut de l'écran.
  *
  * Le combo **produit / quantité / unité** est unique : en tapant, si le même
@@ -274,13 +327,7 @@ function QuickAdd({
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      <input
-        className="input input--amount"
-        aria-label="Quantité"
-        inputMode="decimal"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-      />
+      <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
       <select
         className="input input--unit"
         aria-label="Unité"
@@ -296,6 +343,7 @@ function QuickAdd({
       <button
         className="btn btn--primary"
         type="submit"
+        aria-label="Ajouter à la liste"
         disabled={pending || Boolean(duplicate)}
       >
         +
@@ -414,13 +462,7 @@ function InlineEdit({
         onChange={(e) => setName(e.target.value)}
         autoFocus
       />
-      <input
-        className="input input--amount"
-        aria-label="Quantité"
-        inputMode="decimal"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-      />
+      <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
       <select
         className="input input--unit"
         aria-label="Unité"
