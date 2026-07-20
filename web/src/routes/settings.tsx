@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
+import { ApiError } from "../api/client";
 import { authApi, type DeviceInfo } from "../api/auth";
 import "./screens.css";
 
@@ -19,9 +21,22 @@ export function SettingsScreen() {
     retry: false,
   });
 
+  const [revokeError, setRevokeError] = useState<string | null>(null);
+
   const revoke = async (id: string) => {
     if (!window.confirm("Révoquer cet appareil ? Il devra être ré-enrôlé.")) return;
-    await authApi.revokeDevice(id);
+    setRevokeError(null);
+    try {
+      await authApi.revokeDevice(id);
+    } catch (err) {
+      // 409 : c'est le dernier appareil du foyer, l'API refuse le verrouillage.
+      setRevokeError(
+        err instanceof ApiError && err.status === 409
+          ? "Impossible de révoquer le dernier appareil : personne ne pourrait plus se connecter. Enrôlez-en un autre d'abord."
+          : "La révocation a échoué. Réessayez.",
+      );
+      return;
+    }
     await queryClient.invalidateQueries({ queryKey: ["devices"] });
   };
 
@@ -68,6 +83,11 @@ export function SettingsScreen() {
           <p className="muted" style={{ fontSize: "0.85rem" }}>
             Aucun appareil enrôlé. Ouvrez une fenêtre d'enrôlement sur le serveur
             (<code>weekmeals device open-window</code>).
+          </p>
+        )}
+        {revokeError && (
+          <p className="settings-error" role="alert">
+            {revokeError}
           </p>
         )}
       </div>

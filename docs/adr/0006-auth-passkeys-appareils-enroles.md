@@ -50,15 +50,36 @@ l'appareil.
 
 ### Le credential : passkey découvrable, vérification utilisateur exigée
 
-Via la crate **`webauthn-rs`**. Deux paramètres de cérémonie portent tout
-l'intérêt du choix :
+Via la crate **`webauthn-rs`**, avec `start_passkey_registration` à
+l'enrôlement et `start_discoverable_authentication` à la connexion :
 
-- **Credentials découvrables** (*resident keys*, `ResidentKey::Required`) : le
-  téléphone sait à lui seul quelle identité il porte. L'écran d'accueil propose
-  directement « Continuer avec Face ID » — **aucun identifiant à saisir**,
-  ce qui est exactement l'UX visée.
 - **`UserVerification::Required`** : la clé ne s'utilise qu'après Face ID /
-  Touch ID / code. Un téléphone volé déverrouillé ne suffit pas.
+  Touch ID / code. Un téléphone volé déverrouillé ne suffit pas. C'est le
+  réglage par défaut de `start_passkey_registration`.
+- **Credentials découvrables** : le téléphone sait à lui seul quelle identité il
+  porte, d'où le « Continuer avec Face ID » sans identifiant à saisir.
+
+Nuance importante sur ce second point : `start_passkey_registration` pose
+`require_resident_key(false)`. La seule API de la crate qui exige vraiment une
+resident key est `start_attested_resident_key_registration`, inutilisable ici —
+elle réclame une liste de CA d'attestation *et* pose
+`reject_synchronised_authenticators(true)`, soit le rejet des passkeys
+iCloud/Google que l'on veut précisément accepter.
+
+On s'appuie donc sur le fait que les authentificateurs de plateforme Apple et
+Google créent leurs passkeys comme découvrables même sans l'exiger. C'est un
+comportement de fournisseur, **pas une garantie du standard** : à revalider sur
+un appareil réel à chaque montée de version majeure d'OS. Si un jour un
+authentificateur ne le fait plus, le symptôme sera net — plus aucune passkey
+proposée à la connexion.
+
+### La médiation conditionnelle est écartée
+
+`start_discoverable_authentication` renvoie `mediation: "conditional"` à côté de
+`publicKey`. Ce mode est celui de l'**autofill** : il n'affiche aucune modale et
+attend qu'un champ `autocomplete="username webauthn"` prenne le focus. Notre
+écran déclenche la cérémonie sur un clic de bouton, donc le client ne transmet
+que `publicKey` et ignore volontairement `mediation`.
 
 Après une cérémonie réussie, on ouvre une **session `tower-sessions`** classique
 (le cookie `HttpOnly` existant) : Face ID n'est redemandé qu'à l'expiration de
@@ -150,8 +171,11 @@ messagerie et ne peut pas être transféré par inadvertance.
    l'attestation ; on insère la ligne `devices` et on **ouvre directement la
    session**. L'utilisateur est dans l'app, sans écran de connexion
    supplémentaire.
-6. **Fermeture** — par expiration, par `close-window`, ou immédiatement après
-   cinq échecs de code.
+6. **Fermeture** — le code étant à usage unique, la fenêtre se referme **dès
+   qu'un appareil s'est enrôlé**. Sinon : par expiration, par `close-window`, ou
+   immédiatement après cinq échecs de code. Enrôler le second téléphone demande
+   donc une seconde `open-window`, et un second code — ce qui coûte une commande
+   et supprime toute fenêtre qui traîne ouverte après usage.
 
 Le **handle utilisateur** WebAuthn (`user.id`) est l'UUID du `users`, opaque et
 stable. Il est stocké sur le téléphone et renvoyé à chaque authentification :
@@ -161,6 +185,10 @@ personnelle — le libellé et le pseudo vivent dans `user.name` / `displayName`
 qui ne servent qu'à l'affichage du sélecteur de passkey.
 
 ### Le stockage
+
+La **révocation refuse de supprimer le dernier appareil** du foyer (`409`) :
+sans passkey restante, plus personne n'entre et le seul recours serait un accès
+shell. Se retirer complètement passe par le CLI, délibérément.
 
 Une table `devices` : `user_id`, `credential_id` (unique), clé publique COSE,
 compteur de signature, AAGUID, drapeaux `backup_eligible` / `backup_state`,

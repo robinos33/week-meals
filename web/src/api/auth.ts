@@ -64,6 +64,12 @@ export async function enrollDevice(code: string, label: string): Promise<Identit
 /**
  * « Continuer avec Face ID » : authentification découvrable, sans identifiant.
  * Le téléphone présente la passkey de son choix.
+ *
+ * On ne transmet **que** `challenge.publicKey` : le serveur renvoie aussi un
+ * `mediation: "conditional"` (frère de `publicKey`), qui déclencherait l'UI
+ * d'autofill — laquelle n'affiche aucune modale et attend le focus d'un champ
+ * `autocomplete="username webauthn"`. Notre écran part d'un clic de bouton,
+ * donc ce champ est volontairement ignoré. Ne pas passer la réponse entière.
  */
 export async function loginWithPasskey(): Promise<Identity> {
   const challenge = await api.post<RequestChallenge>("/auth/login/start");

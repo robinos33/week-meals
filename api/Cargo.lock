@@ -208,6 +208,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tower-sessions",
+ "tracing",
  "uuid",
  "webauthn-rs",
 ]

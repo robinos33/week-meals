@@ -102,8 +102,9 @@ enum Command {
 enum DeviceCommand {
     /// Ouvre la fenêtre d'enrôlement et imprime le code d'appairage.
     OpenWindow {
-        /// Durée d'ouverture en minutes.
-        #[arg(long, default_value_t = 15)]
+        /// Durée d'ouverture en minutes (1 à 120). Bornée : une fenêtre qu'on
+        /// laisse ouverte des heures cesse d'être une fenêtre.
+        #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(i64).range(1..=120))]
         minutes: i64,
         /// Rattache l'enrôlement à un utilisateur existant (pseudo ou UUID) —
         /// deuxième téléphone, tablette. Sinon un nouvel utilisateur est créé.

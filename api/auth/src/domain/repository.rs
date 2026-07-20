@@ -60,6 +60,7 @@ pub trait DeviceRepository: Send + Sync {
         &self,
         credential_id: &[u8],
         passkey_json: &str,
+        backup_eligible: bool,
         backup_state: bool,
         last_seen_at: DateTime<Utc>,
     ) -> Result<(), RepositoryError>;

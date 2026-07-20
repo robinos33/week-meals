@@ -35,6 +35,10 @@ use webauthn_rs::prelude::{
     RequestChallengeResponse, Url, Webauthn, WebauthnBuilder,
 };
 
+/// Ré-export du parseur d'URL de `webauthn-rs`, pour que le `server` déduise le
+/// `rp_id` de l'origine sans dépendre directement d'`url`.
+pub use webauthn_rs::prelude::Url as WebauthnUrl;
+
 use crate::application::commands::{LogoutCommand, LogoutHandler};
 use crate::domain::device::{Device, DeviceLabel};
 use crate::domain::pairing::{PairingCode, PairingHasher};
@@ -281,7 +285,15 @@ async fn enroll_start(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .unwrap_or(false);
     if !code_ok {
-        let _ = state.onboarding.record_failure(state.household_id).await;
+        // Le compteur est la protection anti-force-brute : s'il ne s'incrémente
+        // pas, elle disparaît. On refuse plutôt que de laisser passer en silence.
+        match state.onboarding.record_failure(state.household_id).await {
+            Ok(attempts) => tracing::warn!("code d'appairage refusé ({attempts} tentative(s))"),
+            Err(error) => {
+                tracing::error!("comptage des tentatives d'appairage : {error}");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -327,6 +339,14 @@ async fn enroll_finish(
         Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
+    // La fenêtre est revérifiée ici : `enroll_start` peut dater, et rien
+    // n'empêche une cérémonie entamée avant la fermeture d'aboutir après.
+    match state.onboarding.get(state.household_id).await {
+        Ok(Some(window)) if window.is_open(Utc::now()) => {}
+        Ok(_) => return Err(StatusCode::FORBIDDEN),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+
     let passkey = state
         .webauthn
         .finish_passkey_registration(&credential, &ceremony.reg)
@@ -368,6 +388,17 @@ async fn enroll_finish(
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
+    // Code d'appairage à usage unique (ADR-0006) : la fenêtre se referme dès
+    // qu'un appareil s'est enrôlé. Enrôler un second téléphone demande une
+    // nouvelle `weekmeals device open-window`, donc un nouveau code.
+    if let Err(error) = state.onboarding.close(state.household_id).await {
+        // L'appareil est enrôlé ; échouer ici laisserait la fenêtre ouverte
+        // sans que l'utilisateur puisse rien y faire — on trace et on refuse,
+        // le CLI reste le recours (`device close-window`).
+        tracing::error!("fermeture de la fenêtre d'enrôlement : {error}");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
     let _ = session.remove::<EnrollCeremony>(ENROLL_KEY).await;
     let session_user = SessionUser {
         user_id: ceremony.user_id,
@@ -380,6 +411,14 @@ async fn enroll_finish(
 
 /// `POST /auth/login/start` — démarre une authentification découvrable (aucun
 /// identifiant : le téléphone présentera la passkey de son choix).
+///
+/// `start_discoverable_authentication` positionne `mediation: "conditional"`
+/// dans sa réponse (à côté de `publicKey`, pas dedans). Ce mode-là est celui de
+/// l'**autofill** : il n'affiche aucune modale et attend qu'un champ
+/// `autocomplete="username webauthn"` prenne le focus. Notre écran déclenche la
+/// cérémonie sur un clic de bouton — le client ne transmet donc que `publicKey`
+/// et laisse tomber `mediation` (cf. `web/src/api/auth.ts`). À reconsidérer si
+/// l'on veut un jour la vraie UI conditionnelle.
 async fn login_start(
     session: Session,
     State(state): State<AuthState>,
@@ -444,7 +483,13 @@ async fn login_finish(
         if let Ok(json) = serde_json::to_string(&passkey) {
             let _ = state
                 .devices
-                .update_after_auth(cred_id, &json, result.backup_state(), Utc::now())
+                .update_after_auth(
+                    cred_id,
+                    &json,
+                    result.backup_eligible(),
+                    result.backup_state(),
+                    Utc::now(),
+                )
                 .await;
         }
     }
@@ -500,11 +545,21 @@ async fn list_devices(
 }
 
 /// `DELETE /auth/devices/{id}` — révoque un appareil du foyer courant.
+///
+/// Refuse de révoquer le **dernier** appareil : sans passkey restante, plus
+/// personne ne peut entrer, et le seul recours serait un accès shell au serveur.
 async fn revoke_device(
     user: AuthUser,
     State(state): State<AuthState>,
     Path(id): Path<Uuid>,
 ) -> impl IntoResponse {
+    let remaining = match state.devices.list_by_household(user.household_id()).await {
+        Ok(devices) => devices.len(),
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    if remaining <= 1 {
+        return StatusCode::CONFLICT;
+    }
     match state
         .devices
         .revoke(DeviceId::from(id), user.household_id())

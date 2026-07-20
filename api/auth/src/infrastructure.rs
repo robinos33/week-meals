@@ -271,17 +271,19 @@ impl DeviceRepository for SqlxDeviceRepository {
         &self,
         credential_id: &[u8],
         passkey_json: &str,
+        backup_eligible: bool,
         backup_state: bool,
         last_seen_at: DateTime<Utc>,
     ) -> Result<(), RepositoryError> {
         let passkey: serde_json::Value = serde_json::from_str(passkey_json)
             .map_err(|e| RepositoryError::Backend(format!("passkey JSON invalide : {e}")))?;
         sqlx::query(
-            "update devices set passkey = $2, backup_state = $3, last_seen_at = $4 \
-             where credential_id = $1",
+            "update devices set passkey = $2, backup_eligible = $3, backup_state = $4, \
+             last_seen_at = $5 where credential_id = $1",
         )
         .bind(credential_id)
         .bind(passkey)
+        .bind(backup_eligible)
         .bind(backup_state)
         .bind(last_seen_at)
         .execute(&self.pool)

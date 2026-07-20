@@ -16,7 +16,7 @@ use password_hash::rand_core::RngCore;
 const CODE_LEN: usize = 8;
 
 /// Alphabet du code : sans caractères visuellement ambigus (`0/O`, `1/I/L`).
-/// 32 symboles → ~5 bits par caractère, ~40 bits sur 8 caractères.
+/// 31 symboles → log2(31) ≈ 4,95 bits par caractère, ≈ 39,6 bits sur 8.
 const ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 /// Code d'appairage en clair, sous sa forme **canonique** (majuscules, sans
@@ -28,11 +28,20 @@ impl PairingCode {
     /// Génère un code aléatoire (CSPRNG) de [`CODE_LEN`] caractères.
     #[must_use]
     pub fn generate() -> Self {
+        let len = ALPHABET.len() as u32;
+        // 31 ne divise pas 2^32 : un simple modulo favoriserait les premiers
+        // symboles. On tire par **rejet** au-delà du plus grand multiple de
+        // `len`, ce qui rend la distribution exactement uniforme.
+        let zone = (u32::MAX / len) * len;
         let mut code = String::with_capacity(CODE_LEN);
         for _ in 0..CODE_LEN {
-            // Rejet du biais modulo négligeable : 256 % 32 == 0, distribution uniforme.
-            let idx = (OsRng.next_u32() as usize) % ALPHABET.len();
-            code.push(ALPHABET[idx] as char);
+            let draw = loop {
+                let candidate = OsRng.next_u32();
+                if candidate < zone {
+                    break candidate;
+                }
+            };
+            code.push(ALPHABET[(draw % len) as usize] as char);
         }
         Self(code)
     }
@@ -201,11 +210,13 @@ mod tests {
     #[test]
     fn wrong_code_is_rejected_without_error() {
         let hasher = Argon2PairingHasher::new();
-        let hash = hasher.hash(&PairingCode::generate()).unwrap();
+        let code = PairingCode::generate();
+        let hash = hasher.hash(&code).unwrap();
+        // Le tirage doit différer du code haché, sinon on testerait l'inverse.
         let other = loop {
-            let c = PairingCode::generate();
-            if c.as_canonical() != hash.as_str() {
-                break c;
+            let candidate = PairingCode::generate();
+            if candidate.as_canonical() != code.as_canonical() {
+                break candidate;
             }
         };
         assert!(!hasher.verify(&other, &hash).unwrap());

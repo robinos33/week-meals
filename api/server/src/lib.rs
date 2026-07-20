@@ -71,7 +71,12 @@ impl Config {
             _ => SameSite::Lax,
         };
         // Rétrocompatibilité : l'ancien `AUTH_DISABLED=1` équivaut à `AUTH_MODE=disabled`.
-        let auth_mode = match std::env::var("AUTH_MODE").as_deref() {
+        // Casse ignorée, comme `env_flag` : un `AUTH_MODE=DISABLED` qui retombe
+        // silencieusement sur `Locked` est incompréhensible côté dev.
+        let auth_mode = match std::env::var("AUTH_MODE")
+            .map(|v| v.to_lowercase())
+            .as_deref()
+        {
             Ok("disabled") => AuthMode::Disabled,
             Ok("locked") => AuthMode::Locked,
             _ if env_flag("AUTH_DISABLED") => AuthMode::Disabled,
@@ -96,15 +101,13 @@ impl Config {
 }
 
 /// Extrait l'hôte (sans schéma ni port) d'une URL, pour déduire le `rp_id`.
+/// S'appuie sur le parseur d'`url`, déjà présent via `webauthn-rs`, plutôt que
+/// sur un découpage de chaîne à la main.
 fn host_of(url: &str) -> Option<String> {
-    let without_scheme = url.split("://").nth(1).unwrap_or(url);
-    let host = without_scheme
-        .split('/')
-        .next()?
-        .split(':')
-        .next()?
-        .to_owned();
-    (!host.is_empty()).then_some(host)
+    auth::presentation::WebauthnUrl::parse(url)
+        .ok()?
+        .host_str()
+        .map(str::to_owned)
 }
 
 /// Lit un booléen d'environnement (`1`/`true`/`yes`, insensible à la casse).

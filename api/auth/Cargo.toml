@@ -20,14 +20,18 @@ serde_json = { workspace = true }
 argon2 = "0.5.3"
 password-hash = { version = "0.5", features = ["getrandom"] }
 # Passkeys WebAuthn (cf. ADR-0006) :
-#  - resident-key-support             → credentials découvrables (resident keys)
-#  - conditional-ui                   → authentification découvrable (sans identifiant)
+#  - conditional-ui                   → `start_discoverable_authentication`, le
+#                                       login sans identifiant
 #  - danger-allow-state-serialisation → sérialiser l'état de cérémonie en session
+# `resident-key-support` n'est PAS activée : elle ne débloque que
+# `start_attested_resident_key_registration`, qui exige une liste de CA
+# d'attestation et pose `reject_synchronised_authenticators(true)` — soit le
+# rejet des passkeys iCloud/Google, exactement l'inverse de ce qu'on veut.
 webauthn-rs = { version = "0.5.5", features = [
-    "resident-key-support",
     "conditional-ui",
     "danger-allow-state-serialisation",
 ] }
+tracing = "0.1"
 # 0.14 pour rester aligné sur `tower-sessions-sqlx-store` (store Postgres).
 tower-sessions = "0.14"
 axum = { workspace = true, features = ["json"] }
