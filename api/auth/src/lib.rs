@@ -1,4 +1,5 @@
-//! Domaine `auth` — authentification, foyer (household) et invitations.
+//! Domaine `auth` — authentification par passkeys, foyer (household) et
+//! appareils enrôlés (cf. ADR-0006).
 //!
 //! Découpage vertical : ce domaine porte ses propres couches (convention
 //! partagée par tous les domaines de Week Meals, cf. ADR-0005).

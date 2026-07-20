@@ -13,9 +13,21 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 sqlx = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+# Hachage du code d'appairage (Argon2id) : réutilisé ici pour un secret
+# court-vivant. `password-hash` apporte `OsRng` (sel + génération du code).
 argon2 = "0.5.3"
-# Active `OsRng` (sel aléatoire) : argon2 réexporte ce `password_hash`.
 password-hash = { version = "0.5", features = ["getrandom"] }
+# Passkeys WebAuthn (cf. ADR-0006) :
+#  - resident-key-support             → credentials découvrables (resident keys)
+#  - conditional-ui                   → authentification découvrable (sans identifiant)
+#  - danger-allow-state-serialisation → sérialiser l'état de cérémonie en session
+webauthn-rs = { version = "0.5.5", features = [
+    "resident-key-support",
+    "conditional-ui",
+    "danger-allow-state-serialisation",
+] }
 # 0.14 pour rester aligné sur `tower-sessions-sqlx-store` (store Postgres).
 tower-sessions = "0.14"
 axum = { workspace = true, features = ["json"] }

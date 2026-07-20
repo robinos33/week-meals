@@ -1,4 +1,6 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
+import { authApi, type DeviceInfo } from "../api/auth";
 import "./screens.css";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -7,11 +9,26 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "dark", label: "Sombre" },
 ];
 
-/** Onglet Paramètres : apparence (thème) et foyer. */
-// Mode public : pas de section « Compte » ni de déconnexion (aucune session) ;
-// elle reviendra avec la garde d'auth (cf. AUTH_DISABLED).
+/** Onglet Paramètres : apparence (thème), appareils enrôlés et déconnexion. */
 export function SettingsScreen() {
   const { preference, setPreference } = useTheme();
+  const queryClient = useQueryClient();
+  const devices = useQuery({
+    queryKey: ["devices"],
+    queryFn: authApi.listDevices,
+    retry: false,
+  });
+
+  const revoke = async (id: string) => {
+    if (!window.confirm("Révoquer cet appareil ? Il devra être ré-enrôlé.")) return;
+    await authApi.revokeDevice(id);
+    await queryClient.invalidateQueries({ queryKey: ["devices"] });
+  };
+
+  const logout = async () => {
+    await authApi.logout();
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+  };
 
   return (
     <section>
@@ -21,11 +38,7 @@ export function SettingsScreen() {
 
       <div className="card settings-section">
         <h2>Apparence</h2>
-        <div
-          className="segmented"
-          role="group"
-          aria-label="Thème de l'application"
-        >
+        <div className="segmented" role="group" aria-label="Thème de l'application">
           {THEME_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -42,6 +55,59 @@ export function SettingsScreen() {
           « Système » suit le réglage clair/sombre de votre appareil.
         </p>
       </div>
+
+      <div className="card settings-section">
+        <h2>Appareils</h2>
+        {devices.data && devices.data.length > 0 ? (
+          <ul className="device-list">
+            {devices.data.map((device) => (
+              <DeviceRow key={device.id} device={device} onRevoke={() => revoke(device.id)} />
+            ))}
+          </ul>
+        ) : (
+          <p className="muted" style={{ fontSize: "0.85rem" }}>
+            Aucun appareil enrôlé. Ouvrez une fenêtre d'enrôlement sur le serveur
+            (<code>weekmeals device open-window</code>).
+          </p>
+        )}
+      </div>
+
+      <div className="card settings-section">
+        <h2>Compte</h2>
+        <button className="btn btn--danger-ghost btn--block" type="button" onClick={logout}>
+          Se déconnecter
+        </button>
+      </div>
     </section>
+  );
+}
+
+/** Une ligne d'appareil : libellé, dernière activité, révocation. */
+function DeviceRow({ device, onRevoke }: { device: DeviceInfo; onRevoke: () => void }) {
+  const lastSeen = device.last_seen_at
+    ? new Date(device.last_seen_at).toLocaleDateString("fr-FR", {
+        day: "numeric",
+        month: "short",
+      })
+    : "jamais utilisé";
+
+  return (
+    <li className="device-list__item">
+      <div>
+        <span className="device-list__label">{device.label}</span>
+        <span className="muted device-list__meta">
+          {device.backup_state ? "Synchronisée · " : ""}
+          {lastSeen}
+        </span>
+      </div>
+      <button
+        className="btn btn--danger-ghost"
+        type="button"
+        onClick={onRevoke}
+        aria-label={`Révoquer ${device.label}`}
+      >
+        Révoquer
+      </button>
+    </li>
   );
 }

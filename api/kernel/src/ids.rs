@@ -73,6 +73,11 @@ id_type! {
 }
 
 id_type! {
+    /// Identifiant d'un appareil enrôlé (porteur d'une passkey, cf. ADR-0006).
+    DeviceId
+}
+
+id_type! {
     /// Identifiant d'une ligne de liste de courses.
     ShoppingItemId
 }

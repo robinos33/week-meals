@@ -22,9 +22,10 @@ const indexRoute = createRoute({
   },
 });
 
-// Mode public (preview) : plus de mire ni de garde de session. Les écrans
-// vivent directement sous la racine et l'API scope au foyer de démo (cf.
-// AUTH_DISABLED). Réactiver l'auth = reposer la garde `requireSession` ici.
+// La garde d'authentification est portée en amont par `AuthGate` (cf.
+// ADR-0006), qui enveloppe le routeur dans `main.tsx` : les écrans ne sont
+// montés qu'une fois l'identité résolue (session, ou foyer de démo en mode
+// public). Les routes restent donc « nues » ici.
 const recipesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/recipes",

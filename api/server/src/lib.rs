@@ -20,9 +20,11 @@ use tower_sessions::cookie::SameSite;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 
-use auth::domain::password::Argon2Hasher;
-use auth::infrastructure::SqlxUserRepository;
-use auth::presentation::{self, AuthState};
+use auth::domain::pairing::Argon2PairingHasher;
+use auth::infrastructure::{SqlxDeviceRepository, SqlxOnboardingRepository, SqlxUserRepository};
+use auth::presentation::{self, AuthMode, AuthState};
+use kernel::HouseholdId;
+use kernel::DEMO_HOUSEHOLD_ID;
 use meal_plan::infrastructure::SqlxMealPlanRepository;
 use meal_plan::presentation::MealPlanState;
 use recipes::domain::PhotoStorage;
@@ -46,6 +48,13 @@ pub struct Config {
     /// `SameSite` du cookie. `Lax` en dev (même site), `None` requis pour un
     /// front et une API sur des domaines distincts (prod) — impose `Secure`.
     pub same_site: SameSite,
+    /// Mode d'authentification (cf. ADR-0006). `Locked` par défaut (fail-closed).
+    pub auth_mode: AuthMode,
+    /// `rp_id` WebAuthn : le domaine (sans schéma ni port) partagé par le front
+    /// et l'API. `localhost` en dev.
+    pub rp_id: String,
+    /// Origine WebAuthn : l'URL complète du front (schéma + domaine + port).
+    pub rp_origin: String,
 }
 
 impl Config {
@@ -61,12 +70,41 @@ impl Config {
             Ok("strict") => SameSite::Strict,
             _ => SameSite::Lax,
         };
+        // Rétrocompatibilité : l'ancien `AUTH_DISABLED=1` équivaut à `AUTH_MODE=disabled`.
+        let auth_mode = match std::env::var("AUTH_MODE").as_deref() {
+            Ok("disabled") => AuthMode::Disabled,
+            Ok("locked") => AuthMode::Locked,
+            _ if env_flag("AUTH_DISABLED") => AuthMode::Disabled,
+            _ => AuthMode::Locked,
+        };
+        // Le `rp_id` par défaut se déduit de l'origine du front (son hôte) ;
+        // `localhost` en dernier recours (dev).
+        let rp_origin = std::env::var("WEBAUTHN_RP_ORIGIN").unwrap_or_else(|_| web_origin.clone());
+        let rp_id = std::env::var("WEBAUTHN_RP_ID")
+            .ok()
+            .or_else(|| host_of(&rp_origin))
+            .unwrap_or_else(|| "localhost".to_owned());
         Self {
             web_origin,
             secure_cookie,
             same_site,
+            auth_mode,
+            rp_id,
+            rp_origin,
         }
     }
+}
+
+/// Extrait l'hôte (sans schéma ni port) d'une URL, pour déduire le `rp_id`.
+fn host_of(url: &str) -> Option<String> {
+    let without_scheme = url.split("://").nth(1).unwrap_or(url);
+    let host = without_scheme
+        .split('/')
+        .next()?
+        .split(':')
+        .next()?
+        .to_owned();
+    (!host.is_empty()).then_some(host)
 }
 
 /// Lit un booléen d'environnement (`1`/`true`/`yes`, insensible à la casse).
@@ -112,9 +150,19 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
 
     let cors = cors_layer(config);
 
+    // Mode d'auth injecté une fois pour tout le process (lu par l'extractor
+    // `AuthUser`, y compris depuis les autres domaines).
+    presentation::init_auth_mode(config.auth_mode);
+
+    let webauthn = presentation::build_webauthn(&config.rp_id, &config.rp_origin)
+        .expect("configuration WebAuthn (WEBAUTHN_RP_ID / WEBAUTHN_RP_ORIGIN)");
     let auth_state = AuthState {
+        webauthn: Arc::new(webauthn),
         users: Arc::new(SqlxUserRepository::new(pool.clone())),
-        hasher: Arc::new(Argon2Hasher::new()),
+        devices: Arc::new(SqlxDeviceRepository::new(pool.clone())),
+        onboarding: Arc::new(SqlxOnboardingRepository::new(pool.clone())),
+        hasher: Arc::new(Argon2PairingHasher::new()),
+        household_id: HouseholdId::from(DEMO_HOUSEHOLD_ID),
     };
     let recipe_state = RecipeState {
         recipes: Arc::new(SqlxRecipeRepository::new(pool.clone())),
