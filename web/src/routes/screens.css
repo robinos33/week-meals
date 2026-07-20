@@ -41,6 +41,9 @@
   position: fixed;
   right: 1.15rem;
   bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 1rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 56px;
   height: 56px;
   border: none;
