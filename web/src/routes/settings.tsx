@@ -42,13 +42,6 @@ export function SettingsScreen() {
           « Système » suit le réglage clair/sombre de votre appareil.
         </p>
       </div>
-
-      <div className="card settings-section">
-        <h2>Foyer</h2>
-        <button className="btn" type="button">
-          Générer un lien d'invitation
-        </button>
-      </div>
     </section>
   );
 }

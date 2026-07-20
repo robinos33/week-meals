@@ -73,11 +73,6 @@ id_type! {
 }
 
 id_type! {
-    /// Identifiant d'un lien d'invitation.
-    InvitationId
-}
-
-id_type! {
     /// Identifiant d'une ligne de liste de courses.
     ShoppingItemId
 }
