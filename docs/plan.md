@@ -15,7 +15,10 @@ et faire les courses sans friction. Deux moments d'usage clés :
 - **Household** (foyer) — les utilisateurs appartiennent à un foyer ; toutes les
   données sont scopées au foyer. L'app est donc multi-foyers *by design*, sans
   travail supplémentaire pour les self-hosters.
-- **User** — pseudo + mot de passe (Argon2id). Aucun email. Voir [ADR-0002](adr/0002-auth-sans-email.md).
+- **User** — reconnu par **passkey** (WebAuthn) enrôlée sur son téléphone. Ni
+  email, ni mot de passe. Voir [ADR-0006](adr/0006-auth-passkeys-appareils-enroles.md).
+- **Device** — passkey enrôlée pendant une fenêtre d'onboarding ouverte au CLI :
+  clé publique, libellé, dernière activité. Révocable.
 - **Recipe** — titre, photo, temps prépa/cuisson, ingrédients (`quantity + unit`)
   et **étapes de préparation** (`steps` : liste ordonnée de texte).
   Unités : `g`, `kg`, `ml`, `l`, `piece`.
@@ -49,7 +52,7 @@ modules internes. Un `kernel` pur héberge les types transverses ; le binaire
 week-meals/
 ├── api/                     # Rust — workspace
 │   ├── kernel/              # noyau pur, partagé (VO communs, IDs, erreurs)
-│   ├── auth/                # authentification, foyer, invitations
+│   ├── auth/                # passkeys (WebAuthn), foyer, appareils enrôlés
 │   ├── recipes/             # recettes (CRUD, photos, import/export)
 │   ├── meal-plan/           # calendrier midi/soir
 │   ├── shopping-list/       # liste + conversion grammes→unités (cœur métier)
@@ -99,7 +102,7 @@ mutations rejouée au retour du réseau. Conflits en *last-write-wins* (suffisan
 
 | Composant | Choix | Notes |
 |---|---|---|
-| Backend | Rust — Axum + SQLx + Tokio | Argon2id, sessions cookie (`tower-sessions`) |
+| Backend | Rust — Axum + SQLx + Tokio | `webauthn-rs`, sessions cookie (`tower-sessions`) |
 | Frontend | React + Vite + TS | TanStack Query/Router, `vite-plugin-pwa`, Dexie |
 | BDD | PostgreSQL — Neon (free tier 0,5 Go) | Docker en local |
 | Photos | Cloudflare R2 (10 Go gratuits) | Upload via URL présignée |
@@ -120,7 +123,7 @@ Détail et alternatives : [ADR-0001](adr/0001-stack-rust-axum-scaleway.md).
 
 Chaque jalon livre quelque chose d'utilisable.
 
-1. **Socle** — workspace Rust, CI, docker-compose, auth + household + invitations
+1. **Socle** — workspace Rust, CI, docker-compose, auth (passkeys) + household + appareils
 2. **Recettes** — CRUD + photos R2 + import/export `data/recipes/`
 3. **Calendrier** — planification midi/soir
 4. **Liste de courses** — génération + conversion + édition + check
