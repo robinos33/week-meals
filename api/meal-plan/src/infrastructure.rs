@@ -69,11 +69,18 @@ impl SqlxMealPlanRepository {
 #[async_trait::async_trait]
 impl MealPlanRepository for SqlxMealPlanRepository {
     async fn set(&self, meal: &PlannedMeal) -> Result<(), RepositoryError> {
+        // `counted_at` (garde du compteur « cuisiné X fois », #58) est remis à
+        // zéro quand la recette du créneau **change** : la nouvelle recette
+        // pourra être comptée à la prochaine génération. Reposer la même recette
+        // n'y touche pas — sinon on la recompterait à tort.
         sqlx::query(
             "insert into meal_plan (household_id, meal_date, slot, recipe_id) \
              values ($1, $2, $3, $4) \
              on conflict (household_id, meal_date, slot) \
-             do update set recipe_id = excluded.recipe_id, updated_at = now()",
+             do update set recipe_id = excluded.recipe_id, updated_at = now(), \
+                 counted_at = case \
+                     when meal_plan.recipe_id is distinct from excluded.recipe_id \
+                     then null else meal_plan.counted_at end",
         )
         .bind(meal.household_id.as_uuid())
         .bind(meal.date)

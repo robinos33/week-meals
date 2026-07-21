@@ -86,11 +86,23 @@
 }
 
 .recipe-card__photo {
+  position: relative;
   aspect-ratio: 4 / 3;
   background: var(--color-surface-2);
   display: grid;
   place-items: center;
   font-size: 2rem;
+}
+
+/* Médaille du podium des recettes les plus cuisinées (#58). */
+.recipe-card__medal {
+  position: absolute;
+  top: 0.4rem;
+  left: 0.4rem;
+  font-size: 1.35rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.35));
+  pointer-events: none;
 }
 
 .recipe-card__photo img {
@@ -755,6 +767,14 @@
 
 .recipe-detail__time {
   margin-top: 0.25rem;
+}
+
+/* Ligne de méta de la fiche : temps total + « Cuisiné X fois » (#58). */
+.recipe-detail__meta {
+  margin-top: 0.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
 }
 
 .recipe-detail__section {

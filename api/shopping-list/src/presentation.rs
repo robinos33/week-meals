@@ -31,7 +31,8 @@ use crate::application::commands::{
 };
 use crate::application::queries::{GetListHandler, GetListQuery, GetListResponse};
 use crate::domain::{
-    PlannedIngredientsSource, ReferenceRepository, ShoppingItem, ShoppingListRepository,
+    CookedCountRecorder, PlannedIngredientsSource, ReferenceRepository, ShoppingItem,
+    ShoppingListRepository,
 };
 
 /// État injecté dans les routes de la liste de courses.
@@ -43,6 +44,8 @@ pub struct ShoppingListState {
     pub references: Arc<dyn ReferenceRepository>,
     /// Projection des ingrédients planifiés.
     pub planned: Arc<dyn PlannedIngredientsSource>,
+    /// Compteur « cuisiné X fois » (#58), incrémenté à la génération.
+    pub cooked: Arc<dyn CookedCountRecorder>,
 }
 
 /// Sous-router de la liste de courses, monté par le `server`.
@@ -169,6 +172,7 @@ async fn generate(
         state.items.as_ref(),
         state.references.as_ref(),
         state.planned.as_ref(),
+        state.cooked.as_ref(),
     )
     .handle(GenerateListCommand {
         household_id: user.household_id(),

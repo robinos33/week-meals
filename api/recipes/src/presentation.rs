@@ -122,6 +122,9 @@ struct RecipeView {
     cook_time_min: Option<u32>,
     ingredients: Vec<IngredientView>,
     steps: Vec<String>,
+    /// Nombre de fois cuisinée (#58) : « Cuisiné X fois » sur la fiche, et tri
+    /// du podium 🥇🥈🥉 dans la grille.
+    cooked_count: u32,
 }
 
 impl From<Recipe> for RecipeView {
@@ -143,6 +146,7 @@ impl From<Recipe> for RecipeView {
                 })
                 .collect(),
             steps: recipe.steps,
+            cooked_count: recipe.cooked_count,
         }
     }
 }

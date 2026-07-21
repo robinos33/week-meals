@@ -24,6 +24,8 @@ export interface RecipeSummary {
   id: string;
   title: string;
   photo: string | null;
+  /** Nombre de fois cuisinée (#58) — sert au podium de la grille Recettes. */
+  cooked_count: number;
 }
 
 /** Calendrier du foyer sur une plage inclusive `from..=to`. */

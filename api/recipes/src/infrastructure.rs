@@ -63,6 +63,7 @@ struct RecipeRow {
     photo: Option<String>,
     prep_time_min: Option<i32>,
     cook_time_min: Option<i32>,
+    cooked_count: i32,
 }
 
 #[derive(sqlx::FromRow)]
@@ -95,6 +96,9 @@ fn assemble(
     ingredients: Vec<RecipeIngredient>,
     steps: Vec<String>,
 ) -> Result<Recipe, RepositoryError> {
+    // `cooked_count` est contraint `>= 0` en base ; un négatif serait une
+    // corruption — on retombe sur `0` plutôt que de paniquer.
+    let cooked_count = u32::try_from(row.cooked_count).unwrap_or(0);
     Recipe::from_parts(
         RecipeId::from(row.id),
         HouseholdId::from(row.household_id),
@@ -105,6 +109,7 @@ fn assemble(
         ingredients,
         steps,
     )
+    .map(|recipe| recipe.with_cooked_count(cooked_count))
     .map_err(|e| RepositoryError::Backend(format!("invalid stored recipe: {e}")))
 }
 
@@ -255,7 +260,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         id: RecipeId,
     ) -> Result<Option<Recipe>, RepositoryError> {
         let row: Option<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min \
+            "select id, household_id, title, photo, prep_time_min, cook_time_min, cooked_count \
              from recipes where id = $1 and household_id = $2",
         )
         .bind(id.as_uuid())
@@ -272,7 +277,7 @@ impl RecipeRepository for SqlxRecipeRepository {
 
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<Recipe>, RepositoryError> {
         let rows: Vec<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min \
+            "select id, household_id, title, photo, prep_time_min, cook_time_min, cooked_count \
              from recipes where household_id = $1 order by lower(title)",
         )
         .bind(household_id.as_uuid())
@@ -289,7 +294,7 @@ impl RecipeRepository for SqlxRecipeRepository {
     ) -> Result<Vec<Recipe>, RepositoryError> {
         let pattern = format!("%{}%", escape_like(query.trim()));
         let rows: Vec<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min \
+            "select id, household_id, title, photo, prep_time_min, cook_time_min, cooked_count \
              from recipes where household_id = $1 and title ilike $2 escape '\\' \
              order by lower(title)",
         )

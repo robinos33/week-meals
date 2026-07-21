@@ -64,7 +64,14 @@ export function RecipeDetailScreen() {
       </div>
 
       <h1 className="recipe-detail__title">{recipe.title}</h1>
-      {time && <p className="recipe-detail__time muted">⏱️ {time}</p>}
+      <p className="recipe-detail__meta muted">
+        {time && <span>⏱️ {time}</span>}
+        {recipe.cooked_count > 0 && (
+          <span>
+            🍳 Cuisiné {recipe.cooked_count} fois
+          </span>
+        )}
+      </p>
 
       <h2 className="recipe-detail__section">Ingrédients</h2>
       {recipe.ingredients.length ? (

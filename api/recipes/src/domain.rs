@@ -56,6 +56,11 @@ pub struct Recipe {
     pub ingredients: Vec<RecipeIngredient>,
     /// Étapes de préparation, dans l'ordre.
     pub steps: Vec<String>,
+    /// Nombre de fois où la recette a été cuisinée (#58). Incrémenté à la
+    /// génération de la liste de courses, jamais saisi par l'utilisateur : les
+    /// constructeurs le posent à `0`, la persistance l'injecte via
+    /// [`Recipe::with_cooked_count`].
+    pub cooked_count: u32,
 }
 
 /// Borne haute d'un temps de préparation / cuisson, en minutes.
@@ -133,7 +138,17 @@ impl Recipe {
             cook_time_min,
             ingredients,
             steps,
+            cooked_count: 0,
         })
+    }
+
+    /// Fixe le compteur « cuisiné X fois » (#58). Réservé à la persistance, qui
+    /// reconstitue la recette avec sa valeur stockée ; les constructeurs le
+    /// laissent à `0`.
+    #[must_use]
+    pub fn with_cooked_count(mut self, cooked_count: u32) -> Self {
+        self.cooked_count = cooked_count;
+        self
     }
 }
 

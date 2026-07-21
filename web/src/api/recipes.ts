@@ -38,6 +38,8 @@ export interface RecipeView {
   cook_time_min: number | null;
   ingredients: Ingredient[];
   steps: string[];
+  /** Nombre de fois cuisinée (#58) : « Cuisiné X fois » et podium 🥇🥈🥉. */
+  cooked_count: number;
 }
 
 /** Corps de création / mise à jour (remplacement complet). */
