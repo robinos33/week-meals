@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use kernel::{DeviceId, HouseholdId, RepositoryError, UserId};
 
 use super::device::{Device, OnboardingWindow};
-use super::household::Household;
+use super::household::{Household, WeekStartDay};
 use super::pairing::PairingCodeHash;
 use super::user::{User, Username};
 
@@ -17,6 +17,22 @@ pub trait HouseholdRepository: Send + Sync {
 
     /// Récupère un foyer par identifiant, s'il existe.
     async fn find(&self, id: HouseholdId) -> Result<Option<Household>, RepositoryError>;
+
+    /// Lit le premier jour de la semaine du foyer (#57).
+    ///
+    /// # Errors
+    /// [`RepositoryError::NotFound`] si le foyer n'existe pas.
+    async fn week_start_day(&self, id: HouseholdId) -> Result<WeekStartDay, RepositoryError>;
+
+    /// Fixe le premier jour de la semaine du foyer (#57).
+    ///
+    /// # Errors
+    /// [`RepositoryError::NotFound`] si le foyer n'existe pas.
+    async fn set_week_start_day(
+        &self,
+        id: HouseholdId,
+        day: WeekStartDay,
+    ) -> Result<(), RepositoryError>;
 }
 
 /// Persistance des utilisateurs.

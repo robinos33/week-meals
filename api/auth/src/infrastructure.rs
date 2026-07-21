@@ -13,7 +13,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::domain::device::{Device, DeviceLabel, OnboardingWindow};
-use crate::domain::household::{Household, HouseholdName};
+use crate::domain::household::{Household, HouseholdName, WeekStartDay};
 use crate::domain::pairing::PairingCodeHash;
 use crate::domain::repository::{
     DeviceRepository, HouseholdRepository, OnboardingRepository, UserRepository,
@@ -128,6 +128,42 @@ impl HouseholdRepository for SqlxHouseholdRepository {
                 .await
                 .map_err(backend)?;
         row.map(HouseholdRow::into_domain).transpose()
+    }
+
+    async fn week_start_day(&self, id: HouseholdId) -> Result<WeekStartDay, RepositoryError> {
+        let row: Option<(i16,)> =
+            sqlx::query_as("select week_start_day from households where id = $1")
+                .bind(id.as_uuid())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(backend)?;
+        let (raw,) = row.ok_or(RepositoryError::NotFound)?;
+        // La contrainte `check (0..6)` en base garantit la plage ; un écart
+        // serait une corruption de données.
+        u8::try_from(raw)
+            .ok()
+            .and_then(|v| WeekStartDay::new(v).ok())
+            .ok_or_else(|| {
+                RepositoryError::Backend(format!("invalid stored week_start_day: {raw}"))
+            })
+    }
+
+    async fn set_week_start_day(
+        &self,
+        id: HouseholdId,
+        day: WeekStartDay,
+    ) -> Result<(), RepositoryError> {
+        let result = sqlx::query("update households set week_start_day = $2 where id = $1")
+            .bind(id.as_uuid())
+            .bind(i16::from(day.value()))
+            .execute(&self.pool)
+            .await
+            .map_err(backend)?;
+        if result.rows_affected() == 0 {
+            Err(RepositoryError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 }
 

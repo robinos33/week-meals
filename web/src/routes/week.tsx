@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGenerateList } from "../api/shopping-list";
+import { DEFAULT_WEEK_START_DAY, useHouseholdSettings } from "../api/household";
 import {
   useClearEntry,
   useRecipeSummaries,
@@ -11,7 +12,8 @@ import {
 } from "../api/meal-plan";
 import "./screens.css";
 
-const DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+/** Noms des jours indexés par `Date.getDay()` (0 = dimanche … 6 = samedi). */
+const DAY_NAMES = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
 const SLOTS: { slot: MealSlot; label: string }[] = [
   { slot: "lunch", label: "Midi" },
   { slot: "dinner", label: "Soir" },
@@ -25,23 +27,38 @@ function isoDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-/** Les 7 jours de la semaine décalée de `weekOffset`, à partir du lundi. */
-function weekDays(weekOffset: number): { name: string; date: string; label: string }[] {
+/**
+ * Les 7 jours de la semaine décalée de `weekOffset`, à partir de `startDay`
+ * (premier jour du foyer, convention `Date.getDay()` : 0 = dimanche … 6 =
+ * samedi). Le nom de chaque jour se déduit de son propre `getDay()`, si bien
+ * que le tableau tourne tout seul quand le foyer change de premier jour.
+ */
+function weekDays(
+  weekOffset: number,
+  startDay: number,
+): { name: string; date: string; label: string }[] {
   const today = new Date();
-  const monday = new Date(today);
-  const offset = (today.getDay() + 6) % 7; // 0 = lundi
-  monday.setDate(today.getDate() - offset + weekOffset * 7);
-  return DAY_NAMES.map((name, index) => {
-    const day = new Date(monday);
-    day.setDate(monday.getDate() + index);
-    return { name, date: isoDate(day), label: `${day.getDate()}/${day.getMonth() + 1}` };
+  const start = new Date(today);
+  // Nombre de jours écoulés depuis la dernière occurrence de `startDay`.
+  const offset = (today.getDay() - startDay + 7) % 7;
+  start.setDate(today.getDate() - offset + weekOffset * 7);
+  return Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return {
+      name: DAY_NAMES[day.getDay()],
+      date: isoDate(day),
+      label: `${day.getDate()}/${day.getMonth() + 1}`,
+    };
   });
 }
 
 /** Onglet Semaine : 7 jours × 2 créneaux (midi / soir), remplis via un picker. */
 export function WeekScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
-  const days = useMemo(() => weekDays(weekOffset), [weekOffset]);
+  const settings = useHouseholdSettings();
+  const startDay = settings.data?.week_start_day ?? DEFAULT_WEEK_START_DAY;
+  const days = useMemo(() => weekDays(weekOffset, startDay), [weekOffset, startDay]);
   const from = days[0].date;
   const to = days[6].date;
 
