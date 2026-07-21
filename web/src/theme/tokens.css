@@ -44,6 +44,8 @@
   /* Cible tactile minimale (accessibilité). */
   --tap-target: 44px;
   --tabbar-height: 60px;
+  /* Bouton Paramètres : discret, plus petit que la cible tactile standard. */
+  --settings-size: 34px;
 
   color-scheme: light;
 }
