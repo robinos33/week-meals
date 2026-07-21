@@ -5,6 +5,7 @@ import {
   uploadPhoto,
   useCreateRecipe,
   useRecipe,
+  useScrapeRecipe,
   useUpdateRecipe,
   type RecipeInput,
   type RecipeView,
@@ -54,12 +55,15 @@ function RecipeForm({
   submitting,
   error,
   onSubmit,
+  allowImport = false,
 }: {
   heading: string;
   initial?: RecipeView;
   submitting: boolean;
   error: string;
   onSubmit: (input: RecipeInput) => void;
+  /** Affiche le champ « importer depuis une URL » (création seulement, #61). */
+  allowImport?: boolean;
 }) {
   const [title, setTitle] = useState(initial?.title ?? "");
   const [prep, setPrep] = useState(
@@ -88,8 +92,50 @@ function RecipeForm({
       : [emptyStep()],
   );
 
+  const scrape = useScrapeRecipe();
+  const [importUrl, setImportUrl] = useState("");
+  const [importError, setImportError] = useState("");
+
   function patchIngredient(key: number, patch: Partial<IngredientRow>) {
     setIngredients((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  /**
+   * Import depuis une URL : prérempli les champs du brouillon renvoyé par l'API.
+   * Un échec n'affiche qu'un message — la saisie en cours est préservée.
+   */
+  function importFromUrl() {
+    const url = importUrl.trim();
+    if (!url) return;
+    setImportError("");
+    scrape.mutate(url, {
+      onSuccess: (draft) => {
+        setTitle(draft.title);
+        setPrep(draft.prep_time_min != null ? String(draft.prep_time_min) : "");
+        setCook(draft.cook_time_min != null ? String(draft.cook_time_min) : "");
+        if (draft.photo) setPhoto(draft.photo);
+        setIngredients(
+          draft.ingredients.length
+            ? draft.ingredients.map((i) => ({
+                key: newKey(),
+                name: i.name,
+                amount: String(i.amount),
+                unit: i.unit,
+              }))
+            : [emptyIngredient()],
+        );
+        setSteps(
+          draft.steps.length
+            ? draft.steps.map((text) => ({ key: newKey(), text }))
+            : [emptyStep()],
+        );
+      },
+      onError: (err) => {
+        setImportError(
+          err instanceof ApiError ? err.message : "Import impossible. Vérifiez l'URL.",
+        );
+      },
+    });
   }
 
   async function onPhotoSelected(event: ChangeEvent<HTMLInputElement>) {
@@ -137,6 +183,46 @@ function RecipeForm({
       </header>
 
       <form className="recipe-form" onSubmit={submit}>
+        {allowImport && (
+          <div className="field import-url">
+            <label htmlFor="import-url">Importer depuis une URL</label>
+            <div className="import-url__row">
+              <input
+                id="import-url"
+                className="input"
+                type="url"
+                inputMode="url"
+                placeholder="https://…"
+                value={importUrl}
+                onChange={(e) => setImportUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  // Entrée dans ce champ = importer, pas soumettre le formulaire.
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    importFromUrl();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="btn"
+                onClick={importFromUrl}
+                disabled={scrape.isPending || !importUrl.trim()}
+              >
+                {scrape.isPending ? "Import…" : "Importer"}
+              </button>
+            </div>
+            <p className="field-hint">
+              Les champs sont préremplis à partir de la page, à corriger avant d'enregistrer.
+            </p>
+            {importError && (
+              <p className="form-error" role="alert">
+                {importError}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="field">
           <label htmlFor="title">Titre</label>
           <input
@@ -352,6 +438,7 @@ export function NewRecipeScreen() {
   return (
     <RecipeForm
       heading="Nouvelle recette"
+      allowImport
       submitting={create.isPending}
       error={create.isError ? mutationError(create.error) : ""}
       onSubmit={(input) =>

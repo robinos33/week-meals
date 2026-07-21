@@ -107,6 +107,12 @@ cuisine — pas de sélecteur HTML propre à chaque site. Les quantités des sit
 relire** avant import. Les cuillères sont converties (soupe = 15 mL, café =
 5 mL), de même que cL/dL ; sans unité reconnue, la ligne devient une pièce.
 
+Le même import est disponible dans l'app : le formulaire de création de recette
+a un champ **« Importer depuis une URL »** qui prérempli les champs (à corriger
+avant d'enregistrer). Exposé en API, c'est le serveur qui va chercher l'URL :
+`POST /recipes/scrape` est donc gardé contre le **SSRF** (https uniquement, IP
+publiques vérifiées et épinglées, redirections coupées, taille bornée).
+
 ### Authentification par passkeys (cf. [ADR-0006](docs/adr/0006-auth-passkeys-appareils-enroles.md))
 
 L'accès se fait par **passkeys WebAuthn** : « Continuer avec Face ID », sans

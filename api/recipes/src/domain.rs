@@ -8,7 +8,7 @@
 //! [issue #9]: https://github.com/robinos33/week-meals/issues/9
 //! [plan.md — Modèle métier]: ../../../docs/plan.md
 
-use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError};
+use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError, Unit};
 
 /// Un ingrédient d'une recette : un nom libre et une [`Quantity`].
 ///
@@ -256,6 +256,78 @@ pub trait RecipeRepository: Send + Sync {
     /// # Errors
     /// [`RepositoryError::NotFound`] si la recette n'existe pas dans le foyer.
     async fn delete(&self, household_id: HouseholdId, id: RecipeId) -> Result<(), RepositoryError>;
+}
+
+// --- Import d'une recette par URL (scraping, #61) -------------------------
+
+/// Un ingrédient extrait d'une page web. Le découpage quantité/unité est
+/// heuristique (« 2 c. à soupe d'huile ») : c'est un brouillon à relire.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScrapedIngredient {
+    /// Nom libre.
+    pub name: String,
+    /// Montant, dans l'unité `unit`.
+    pub amount: f64,
+    /// Unité.
+    pub unit: Unit,
+}
+
+/// Une recette extraite d'une page web : un **brouillon à relire**, à la forme
+/// du formulaire (mêmes champs que `RecipeFields`). Jamais persisté tel quel —
+/// il prérempli un formulaire que l'utilisateur corrige avant d'enregistrer.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ScrapedRecipe {
+    /// Titre.
+    pub title: String,
+    /// Temps de préparation en minutes (optionnel).
+    pub prep_time_min: Option<u32>,
+    /// Temps de cuisson en minutes (optionnel).
+    pub cook_time_min: Option<u32>,
+    /// Photo (URL distante telle que publiée par le site).
+    pub photo: Option<String>,
+    /// Ingrédients.
+    pub ingredients: Vec<ScrapedIngredient>,
+    /// Étapes de préparation, ordonnées.
+    pub steps: Vec<String>,
+}
+
+/// Échec d'un import par URL. Les messages sont destinés à l'utilisateur.
+#[derive(Debug, thiserror::Error)]
+pub enum ScrapeError {
+    /// L'entrée n'est pas une URL exploitable.
+    #[error("l'adresse fournie n'est pas une URL valide")]
+    InvalidUrl,
+    /// Schéma non https (garde SSRF côté serveur).
+    #[error("seules les adresses https sont acceptées")]
+    NotHttps,
+    /// Cible interdite : loopback, IP privée, link-local… (garde SSRF).
+    #[error("cette adresse n'est pas autorisée")]
+    Blocked,
+    /// Page injoignable (réseau, DNS, ou statut d'erreur).
+    #[error("page injoignable")]
+    Unreachable,
+    /// Réponse trop volumineuse pour être analysée.
+    #[error("la page est trop volumineuse pour être analysée")]
+    TooLarge,
+    /// Aucune recette JSON-LD (schema.org) sur la page.
+    #[error("aucune recette n'a été trouvée sur cette page")]
+    NoRecipe,
+}
+
+/// Port d'import d'une recette depuis une URL. L'implémentation vit dans
+/// l'infrastructure ; le domaine ne connaît que ce trait.
+///
+/// Exposé en API, c'est le **serveur** qui récupère l'URL fournie par le
+/// client : l'implémentation garde donc contre le SSRF (https uniquement, IP
+/// publiques vérifiées, redirections désactivées, taille bornée).
+#[async_trait::async_trait]
+pub trait RecipeScraper: Send + Sync {
+    /// Récupère `url` et en extrait un brouillon de recette.
+    ///
+    /// # Errors
+    /// Voir [`ScrapeError`] : URL invalide ou non https, cible interdite, page
+    /// injoignable, trop volumineuse, ou sans recette JSON-LD.
+    async fn scrape(&self, url: &str) -> Result<ScrapedRecipe, ScrapeError>;
 }
 
 #[cfg(test)]

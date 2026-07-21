@@ -52,6 +52,21 @@ export interface RecipeInput {
   steps: string[];
 }
 
+/**
+ * Brouillon extrait d'une page web (`POST /recipes/scrape`, #61). Mêmes champs
+ * que `RecipeInput` : injectable directement dans l'état du formulaire, à
+ * corriger avant d'enregistrer.
+ */
+export type RecipeDraft = RecipeInput;
+
+/**
+ * Importe une recette depuis une URL : le serveur récupère la page et en extrait
+ * un brouillon (JSON-LD schema.org). Ne crée rien — le formulaire est prérempli.
+ */
+export function scrapeRecipe(url: string): Promise<RecipeDraft> {
+  return api.post<RecipeDraft>("/recipes/scrape", { url });
+}
+
 /** Réponse de présignature d'un upload photo (`POST /recipes/photos/presign`). */
 interface PhotoUpload {
   upload_url: string;
@@ -122,6 +137,13 @@ export function useCreateRecipe() {
   return useMutation({
     mutationFn: (input: RecipeInput) => api.post<RecipeView>("/recipes", input),
     onSuccess: () => invalidateLists(queryClient),
+  });
+}
+
+/** Import d'une recette par URL (préremplissage du formulaire, #61). */
+export function useScrapeRecipe() {
+  return useMutation({
+    mutationFn: (url: string) => scrapeRecipe(url),
   });
 }
 
