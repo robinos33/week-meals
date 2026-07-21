@@ -14,7 +14,7 @@ export function AppShell() {
   return (
     <div className="app-shell">
       <Link to="/settings" className="app-shell__settings" aria-label="Paramètres">
-        <svg viewBox="0 0 24 24" aria-hidden="true" width="22" height="22">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18">
           <path
             d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"
             fill="none"
