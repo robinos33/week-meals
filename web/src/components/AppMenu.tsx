@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "../theme/theme-context";
+import { THEME_ICONS } from "./theme-icons";
 
 /**
  * Menu « ⋮ » du coin haut-droit : un bouton discret qui déploie au clic les
@@ -12,6 +13,8 @@ export function AppMenu() {
   const { resolved, setPreference } = useTheme();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Thème proposé par le raccourci : l'inverse de celui affiché.
+  const target = resolved === "dark" ? "light" : "dark";
 
   useEffect(() => {
     if (!open) return;
@@ -59,11 +62,13 @@ export function AppMenu() {
             type="button"
             role="menuitem"
             onClick={() => {
-              setPreference(resolved === "dark" ? "light" : "dark");
+              setPreference(target);
               setOpen(false);
             }}
           >
-            {resolved === "dark" ? "Thème clair" : "Thème sombre"}
+            {/* Le picto annonce le thème visé, comme le libellé. */}
+            <span className="app-menu__icon">{THEME_ICONS[target]}</span>
+            {target === "dark" ? "Thème sombre" : "Thème clair"}
           </button>
           <Link
             to="/settings"
@@ -71,6 +76,24 @@ export function AppMenu() {
             role="menuitem"
             onClick={() => setOpen(false)}
           >
+            <span className="app-menu__icon">
+              {/* Curseurs de réglage. */}
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              >
+                <path d="M4 7h9M19 7h1M4 12h5M15 12h5M4 17h9M19 17h1" />
+                <circle cx="16" cy="7" r="2.2" />
+                <circle cx="12" cy="12" r="2.2" />
+                <circle cx="16" cy="17" r="2.2" />
+              </svg>
+            </span>
             Paramètres
           </Link>
         </div>

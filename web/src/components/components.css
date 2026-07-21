@@ -64,6 +64,7 @@
 .app-menu__item {
   display: flex;
   align-items: center;
+  gap: 0.6rem;
   min-height: var(--tap-target);
   padding: 0 0.75rem;
   border: none;
@@ -78,6 +79,11 @@
 
 .app-menu__item:hover {
   background: var(--color-surface-2);
+}
+
+.app-menu__icon {
+  display: inline-flex;
+  color: var(--color-muted);
 }
 
 /* --- Barre d'onglets ------------------------------------------------------ */

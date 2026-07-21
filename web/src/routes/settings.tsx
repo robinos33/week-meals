@@ -1,3 +1,4 @@
+import { THEME_ICONS } from "../components/theme-icons";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
 import "./screens.css";
 
@@ -34,6 +35,7 @@ export function SettingsScreen() {
               aria-pressed={preference === option.value}
               onClick={() => setPreference(option.value)}
             >
+              <span className="segmented__icon">{THEME_ICONS[option.value]}</span>
               {option.label}
             </button>
           ))}
