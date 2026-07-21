@@ -612,7 +612,8 @@ async fn update_household_settings(
     State(state): State<AuthState>,
     Json(body): Json<HouseholdSettingsView>,
 ) -> Result<Json<HouseholdSettingsView>, StatusCode> {
-    let day = WeekStartDay::new(body.week_start_day).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    let day =
+        WeekStartDay::new(body.week_start_day).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
     state
         .households
         .set_week_start_day(user.household_id(), day)

@@ -143,7 +143,9 @@ impl HouseholdRepository for SqlxHouseholdRepository {
         u8::try_from(raw)
             .ok()
             .and_then(|v| WeekStartDay::new(v).ok())
-            .ok_or_else(|| RepositoryError::Backend(format!("invalid stored week_start_day: {raw}")))
+            .ok_or_else(|| {
+                RepositoryError::Backend(format!("invalid stored week_start_day: {raw}"))
+            })
     }
 
     async fn set_week_start_day(
