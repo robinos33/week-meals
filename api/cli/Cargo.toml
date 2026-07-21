@@ -13,9 +13,11 @@ workspace = true
 
 [dependencies]
 kernel = { workspace = true }
+auth = { workspace = true }
 recipes = { workspace = true }
 shopping-list = { workspace = true }
 sqlx = { workspace = true }
+chrono = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }

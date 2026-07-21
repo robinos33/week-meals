@@ -73,8 +73,8 @@ id_type! {
 }
 
 id_type! {
-    /// Identifiant d'un lien d'invitation.
-    InvitationId
+    /// Identifiant d'un appareil enrôlé (porteur d'une passkey, cf. ADR-0006).
+    DeviceId
 }
 
 id_type! {

@@ -1,22 +1,21 @@
 //! Test d'intégration du CRUD recettes contre un **Postgres réel** (via l'API
-//! HTTP complète, cookie de session inclus). Marqué `#[ignore]` — nécessite
-//! `DATABASE_URL`. Lancer :
+//! HTTP complète). Marqué `#[ignore]` — nécessite `DATABASE_URL`. Lancer :
 //!
 //! ```sh
 //! docker compose up -d
 //! DATABASE_URL=postgres://weekmeals:weekmeals@localhost:5432/weekmeals \
 //!     cargo test -p server --test recipes_flow -- --ignored
 //! ```
+//!
+//! L'authentification par passkeys (ADR-0006) n'est pas rejouable sans
+//! authentificateur : ce test s'exécute donc en **mode public** (`AUTH_MODE=
+//! disabled`), où les requêtes sont scopées au foyer de démo sans session. Le
+//! verrouillage lui-même est couvert par `auth_flow`. Un marqueur unique par
+//! exécution garde le test isolé malgré le foyer partagé.
 
-use auth::domain::household::{Household, HouseholdName};
-use auth::domain::password::{Argon2Hasher, Password, PasswordHasher};
-use auth::domain::user::{User, Username};
-use auth::domain::{HouseholdRepository, UserRepository};
-use auth::infrastructure::{SqlxHouseholdRepository, SqlxUserRepository};
 use axum::body::Body;
-use axum::http::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
+use axum::http::header::CONTENT_TYPE;
 use axum::http::{Request, StatusCode};
-use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::Value;
 use server::{app, init_session_store, pool, Config};
@@ -41,47 +40,18 @@ async fn recipe_crud_flow() {
         .await
         .expect("migrations");
     let store = init_session_store(&pool).await.expect("store de sessions");
+    // Mode public : l'extractor scope au foyer de démo sans session.
+    std::env::set_var("AUTH_MODE", "disabled");
     let config = Config::from_env();
-
-    // Seed d'un compte, puis login pour obtenir le cookie de session.
-    let username = format!("cook_{}", &uuid::Uuid::new_v4().simple().to_string()[..24]);
-    let password = "correct horse battery";
-    let household = Household::new(HouseholdName::new("Chez nous").unwrap());
-    SqlxHouseholdRepository::new(pool.clone())
-        .create(&household)
-        .await
-        .unwrap();
-    let hash = Argon2Hasher::new()
-        .hash(&Password::new(password).unwrap())
-        .unwrap();
-    SqlxUserRepository::new(pool.clone())
-        .create(&User::new(
-            household.id,
-            Username::new(username.clone()).unwrap(),
-            hash,
-        ))
-        .await
-        .unwrap();
-
     let router = app(pool, store, &config);
-    let cookie = login(&router, &username, password).await;
 
-    // Sans cookie : 401.
-    let anon = router
-        .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/recipes")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(anon.status(), StatusCode::UNAUTHORIZED);
+    // Marqueur unique : le foyer de démo est partagé entre exécutions.
+    let marker = uuid::Uuid::new_v4().simple().to_string();
+    let title = format!("Ratatouille {marker}");
 
     // Création.
     let create_body = serde_json::json!({
-        "title": "Ratatouille",
+        "title": title,
         "prep_time_min": 25,
         "cook_time_min": 45,
         "ingredients": [
@@ -92,7 +62,7 @@ async fn recipe_crud_flow() {
     });
     let created = router
         .clone()
-        .oneshot(json_request("POST", "/recipes", &cookie, &create_body))
+        .oneshot(json_request("POST", "/recipes", &create_body))
         .await
         .unwrap();
     assert_eq!(created.status(), StatusCode::CREATED);
@@ -100,16 +70,10 @@ async fn recipe_crud_flow() {
     let id = created["id"].as_str().unwrap().to_owned();
     assert_eq!(created["ingredients"].as_array().unwrap().len(), 2);
 
-    // Recherche par titre.
+    // Recherche par le marqueur unique.
     let found = router
         .clone()
-        .oneshot(
-            Request::builder()
-                .uri("/recipes?search=rata")
-                .header(COOKIE, &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(get(&format!("/recipes?search={marker}")))
         .await
         .unwrap();
     assert_eq!(found.status(), StatusCode::OK);
@@ -119,36 +83,25 @@ async fn recipe_crud_flow() {
     // Détail.
     let detail = router
         .clone()
-        .oneshot(
-            Request::builder()
-                .uri(format!("/recipes/{id}"))
-                .header(COOKIE, &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(get(&format!("/recipes/{id}")))
         .await
         .unwrap();
     assert_eq!(detail.status(), StatusCode::OK);
 
     // Mise à jour.
     let update_body = serde_json::json!({
-        "title": "Ratatouille express",
+        "title": format!("Ratatouille express {marker}"),
         "ingredients": [{ "name": "courgette", "amount": 400.0, "unit": "g" }],
         "steps": ["Tout mettre à mijoter."]
     });
     let updated = router
         .clone()
-        .oneshot(json_request(
-            "PUT",
-            &format!("/recipes/{id}"),
-            &cookie,
-            &update_body,
-        ))
+        .oneshot(json_request("PUT", &format!("/recipes/{id}"), &update_body))
         .await
         .unwrap();
     assert_eq!(updated.status(), StatusCode::OK);
     let updated = json_body(updated).await;
-    assert_eq!(updated["title"], "Ratatouille express");
+    assert_eq!(updated["title"], format!("Ratatouille express {marker}"));
     assert_eq!(updated["ingredients"].as_array().unwrap().len(), 1);
 
     // Suppression, puis 404.
@@ -158,7 +111,6 @@ async fn recipe_crud_flow() {
             Request::builder()
                 .method("DELETE")
                 .uri(format!("/recipes/{id}"))
-                .header(COOKIE, &cookie)
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -167,45 +119,23 @@ async fn recipe_crud_flow() {
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
 
     let gone = router
-        .oneshot(
-            Request::builder()
-                .uri(format!("/recipes/{id}"))
-                .header(COOKIE, &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .oneshot(get(&format!("/recipes/{id}")))
         .await
         .unwrap();
     assert_eq!(gone.status(), StatusCode::NOT_FOUND);
 }
 
-/// Se connecte et renvoie le cookie de session (`id=...`).
-async fn login(router: &Router, username: &str, password: &str) -> String {
-    let body = serde_json::json!({ "username": username, "password": password });
-    let response = router
-        .clone()
-        .oneshot(json_request("POST", "/auth/login", "", &body))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    response
-        .headers()
-        .get_all(SET_COOKIE)
-        .iter()
-        .filter_map(|v| v.to_str().ok())
-        .map(|c| c.split(';').next().unwrap_or("").to_owned())
-        .find(|c| c.starts_with("id="))
-        .expect("cookie de session")
+/// Requête GET simple.
+fn get(uri: &str) -> Request<Body> {
+    Request::builder().uri(uri).body(Body::empty()).unwrap()
 }
 
-/// Construit une requête JSON, avec cookie optionnel (`""` pour aucun).
-fn json_request(method: &str, uri: &str, cookie: &str, body: &Value) -> Request<Body> {
-    let mut builder = Request::builder()
+/// Construit une requête JSON (mode public : sans cookie).
+fn json_request(method: &str, uri: &str, body: &Value) -> Request<Body> {
+    Request::builder()
         .method(method)
         .uri(uri)
-        .header(CONTENT_TYPE, "application/json");
-    if !cookie.is_empty() {
-        builder = builder.header(COOKIE, cookie);
-    }
-    builder.body(Body::from(body.to_string())).unwrap()
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
 }

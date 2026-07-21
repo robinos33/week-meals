@@ -8,12 +8,15 @@ import "./theme/global.css";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { queryClient } from "./query";
 import { router } from "./router";
+import { AuthGate } from "./components/AuthGate";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <AuthGate>
+          <RouterProvider router={router} />
+        </AuthGate>
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,

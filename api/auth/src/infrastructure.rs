@@ -7,13 +7,17 @@
 //! Testcontainers). Toute erreur SQLx est traduite en
 //! [`RepositoryError::Backend`].
 
-use kernel::{HouseholdId, RepositoryError, UserId};
+use chrono::{DateTime, Utc};
+use kernel::{DeviceId, HouseholdId, RepositoryError, UserId};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::domain::device::{Device, DeviceLabel, OnboardingWindow};
 use crate::domain::household::{Household, HouseholdName};
-use crate::domain::password::PasswordHash;
-use crate::domain::repository::{HouseholdRepository, UserRepository};
+use crate::domain::pairing::PairingCodeHash;
+use crate::domain::repository::{
+    DeviceRepository, HouseholdRepository, OnboardingRepository, UserRepository,
+};
 use crate::domain::user::{User, Username};
 
 /// Traduit une erreur SQLx en erreur de repository agnostique.
@@ -44,7 +48,6 @@ struct UserRow {
     id: Uuid,
     household_id: Uuid,
     username: String,
-    password_hash: String,
 }
 
 impl UserRow {
@@ -55,8 +58,39 @@ impl UserRow {
             UserId::from(self.id),
             HouseholdId::from(self.household_id),
             username,
-            PasswordHash::from_phc(self.password_hash),
         ))
+    }
+}
+
+/// Ligne SQL d'un appareil enrôlé.
+#[derive(sqlx::FromRow)]
+struct DeviceRow {
+    id: Uuid,
+    user_id: Uuid,
+    credential_id: Vec<u8>,
+    passkey: serde_json::Value,
+    label: String,
+    backup_eligible: bool,
+    backup_state: bool,
+    created_at: DateTime<Utc>,
+    last_seen_at: Option<DateTime<Utc>>,
+}
+
+impl DeviceRow {
+    fn into_domain(self) -> Result<Device, RepositoryError> {
+        let label = DeviceLabel::new(self.label)
+            .map_err(|e| RepositoryError::Backend(format!("invalid stored device label: {e}")))?;
+        Ok(Device {
+            id: DeviceId::from(self.id),
+            user_id: UserId::from(self.user_id),
+            credential_id: self.credential_id,
+            passkey_json: self.passkey.to_string(),
+            label,
+            backup_eligible: self.backup_eligible,
+            backup_state: self.backup_state,
+            created_at: self.created_at,
+            last_seen_at: self.last_seen_at,
+        })
     }
 }
 
@@ -114,39 +148,262 @@ impl SqlxUserRepository {
 #[async_trait::async_trait]
 impl UserRepository for SqlxUserRepository {
     async fn create(&self, user: &User) -> Result<(), RepositoryError> {
-        sqlx::query(
-            "insert into users (id, household_id, username, password_hash) \
-             values ($1, $2, $3, $4)",
-        )
-        .bind(user.id.as_uuid())
-        .bind(user.household_id.as_uuid())
-        .bind(user.username.as_str())
-        .bind(user.password_hash.as_str())
-        .execute(&self.pool)
-        .await
-        .map_err(backend)?;
+        sqlx::query("insert into users (id, household_id, username) values ($1, $2, $3)")
+            .bind(user.id.as_uuid())
+            .bind(user.household_id.as_uuid())
+            .bind(user.username.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(backend)?;
         Ok(())
     }
 
     async fn find(&self, id: UserId) -> Result<Option<User>, RepositoryError> {
-        let row: Option<UserRow> = sqlx::query_as(
-            "select id, household_id, username, password_hash from users where id = $1",
-        )
-        .bind(id.as_uuid())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(backend)?;
+        let row: Option<UserRow> =
+            sqlx::query_as("select id, household_id, username from users where id = $1")
+                .bind(id.as_uuid())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(backend)?;
         row.map(UserRow::into_domain).transpose()
     }
 
     async fn find_by_username(&self, username: &Username) -> Result<Option<User>, RepositoryError> {
         let row: Option<UserRow> = sqlx::query_as(
-            "select id, household_id, username, password_hash from users where username = $1",
+            "select id, household_id, username from users \
+             where username = $1 order by created_at limit 1",
         )
         .bind(username.as_str())
         .fetch_optional(&self.pool)
         .await
         .map_err(backend)?;
         row.map(UserRow::into_domain).transpose()
+    }
+}
+
+/// Repository SQLx des appareils enrôlés.
+#[derive(Clone)]
+pub struct SqlxDeviceRepository {
+    pool: PgPool,
+}
+
+impl SqlxDeviceRepository {
+    /// Construit le repository à partir d'un pool Postgres.
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// Colonnes d'un appareil, réutilisées par les `select`.
+const DEVICE_COLUMNS: &str = "id, user_id, credential_id, passkey, label, \
+     backup_eligible, backup_state, created_at, last_seen_at";
+
+#[async_trait::async_trait]
+impl DeviceRepository for SqlxDeviceRepository {
+    async fn create(&self, device: &Device) -> Result<(), RepositoryError> {
+        let passkey: serde_json::Value = serde_json::from_str(&device.passkey_json)
+            .map_err(|e| RepositoryError::Backend(format!("passkey JSON invalide : {e}")))?;
+        sqlx::query(
+            "insert into devices \
+             (id, user_id, credential_id, passkey, label, backup_eligible, backup_state) \
+             values ($1, $2, $3, $4, $5, $6, $7)",
+        )
+        .bind(device.id.as_uuid())
+        .bind(device.user_id.as_uuid())
+        .bind(&device.credential_id)
+        .bind(passkey)
+        .bind(device.label.as_str())
+        .bind(device.backup_eligible)
+        .bind(device.backup_state)
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<Device>, RepositoryError> {
+        let rows: Vec<DeviceRow> = sqlx::query_as(&format!(
+            "select {DEVICE_COLUMNS} from devices where user_id = $1 order by created_at"
+        ))
+        .bind(user_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter().map(DeviceRow::into_domain).collect()
+    }
+
+    async fn list_by_household(
+        &self,
+        household_id: HouseholdId,
+    ) -> Result<Vec<Device>, RepositoryError> {
+        let rows: Vec<DeviceRow> = sqlx::query_as(&format!(
+            "select {} from devices d join users u on u.id = d.user_id \
+             where u.household_id = $1 order by d.created_at",
+            DEVICE_COLUMNS
+                .split(", ")
+                .map(|c| format!("d.{c}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+        .bind(household_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter().map(DeviceRow::into_domain).collect()
+    }
+
+    async fn find_by_credential(
+        &self,
+        credential_id: &[u8],
+    ) -> Result<Option<Device>, RepositoryError> {
+        let row: Option<DeviceRow> = sqlx::query_as(&format!(
+            "select {DEVICE_COLUMNS} from devices where credential_id = $1"
+        ))
+        .bind(credential_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(backend)?;
+        row.map(DeviceRow::into_domain).transpose()
+    }
+
+    async fn update_after_auth(
+        &self,
+        credential_id: &[u8],
+        passkey_json: &str,
+        backup_eligible: bool,
+        backup_state: bool,
+        last_seen_at: DateTime<Utc>,
+    ) -> Result<(), RepositoryError> {
+        let passkey: serde_json::Value = serde_json::from_str(passkey_json)
+            .map_err(|e| RepositoryError::Backend(format!("passkey JSON invalide : {e}")))?;
+        sqlx::query(
+            "update devices set passkey = $2, backup_eligible = $3, backup_state = $4, \
+             last_seen_at = $5 where credential_id = $1",
+        )
+        .bind(credential_id)
+        .bind(passkey)
+        .bind(backup_eligible)
+        .bind(backup_state)
+        .bind(last_seen_at)
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn revoke(
+        &self,
+        id: DeviceId,
+        household_id: HouseholdId,
+    ) -> Result<bool, RepositoryError> {
+        let result = sqlx::query(
+            "delete from devices d using users u \
+             where d.user_id = u.id and d.id = $1 and u.household_id = $2",
+        )
+        .bind(id.as_uuid())
+        .bind(household_id.as_uuid())
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(result.rows_affected() > 0)
+    }
+}
+
+/// Repository SQLx de la fenêtre d'enrôlement (colonnes `households.onboarding_*`).
+#[derive(Clone)]
+pub struct SqlxOnboardingRepository {
+    pool: PgPool,
+}
+
+impl SqlxOnboardingRepository {
+    /// Construit le repository à partir d'un pool Postgres.
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// Ligne SQL de la fenêtre d'enrôlement.
+#[derive(sqlx::FromRow)]
+struct OnboardingRow {
+    onboarding_until: Option<DateTime<Utc>>,
+    onboarding_code_hash: Option<String>,
+    onboarding_attempts: i32,
+    onboarding_user_id: Option<Uuid>,
+}
+
+#[async_trait::async_trait]
+impl OnboardingRepository for SqlxOnboardingRepository {
+    async fn open(
+        &self,
+        household_id: HouseholdId,
+        until: DateTime<Utc>,
+        code_hash: &PairingCodeHash,
+        target_user: Option<UserId>,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query(
+            "update households set onboarding_until = $2, onboarding_code_hash = $3, \
+             onboarding_user_id = $4, onboarding_attempts = 0 where id = $1",
+        )
+        .bind(household_id.as_uuid())
+        .bind(until)
+        .bind(code_hash.as_str())
+        .bind(target_user.map(|u| u.as_uuid()))
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn close(&self, household_id: HouseholdId) -> Result<(), RepositoryError> {
+        sqlx::query(
+            "update households set onboarding_until = null, onboarding_code_hash = null, \
+             onboarding_user_id = null, onboarding_attempts = 0 where id = $1",
+        )
+        .bind(household_id.as_uuid())
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
+    }
+
+    async fn get(
+        &self,
+        household_id: HouseholdId,
+    ) -> Result<Option<OnboardingWindow>, RepositoryError> {
+        let row: Option<OnboardingRow> = sqlx::query_as(
+            "select onboarding_until, onboarding_code_hash, onboarding_attempts, \
+             onboarding_user_id from households where id = $1",
+        )
+        .bind(household_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(backend)?;
+
+        Ok(row.and_then(|r| {
+            match (r.onboarding_until, r.onboarding_code_hash) {
+                (Some(until), Some(hash)) => Some(OnboardingWindow {
+                    until,
+                    code_hash: PairingCodeHash::from_phc(hash),
+                    attempts: r.onboarding_attempts,
+                    target_user: r.onboarding_user_id.map(UserId::from),
+                }),
+                // Colonnes partiellement nulles ⇒ pas de fenêtre.
+                _ => None,
+            }
+        }))
+    }
+
+    async fn record_failure(&self, household_id: HouseholdId) -> Result<i32, RepositoryError> {
+        let row: (i32,) = sqlx::query_as(
+            "update households set onboarding_attempts = onboarding_attempts + 1 \
+             where id = $1 returning onboarding_attempts",
+        )
+        .bind(household_id.as_uuid())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(row.0)
     }
 }
