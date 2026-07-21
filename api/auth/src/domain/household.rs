@@ -36,6 +36,36 @@ impl std::fmt::Display for HouseholdName {
     }
 }
 
+/// Premier jour de la semaine d'un foyer (#57), paramétrable car le planning
+/// est partagé et notre semaine réelle démarre le samedi (courses).
+///
+/// Convention `Date.getDay()` du front : `0` = dimanche … `6` = samedi. Le
+/// défaut applicatif est lundi (`1`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WeekStartDay(u8);
+
+impl WeekStartDay {
+    /// Lundi — défaut historique, avant que le réglage n'existe.
+    pub const MONDAY: Self = Self(1);
+
+    /// Construit un jour de départ valide (`0..=6`).
+    ///
+    /// # Errors
+    /// [`AuthError::InvalidWeekStartDay`] hors de `0..=6`.
+    pub fn new(value: u8) -> Result<Self, AuthError> {
+        if value > 6 {
+            return Err(AuthError::InvalidWeekStartDay);
+        }
+        Ok(Self(value))
+    }
+
+    /// La valeur brute (`0` = dimanche … `6` = samedi).
+    #[must_use]
+    pub fn value(self) -> u8 {
+        self.0
+    }
+}
+
 /// Un foyer : entité racine de scoping.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Household {

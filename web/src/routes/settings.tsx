@@ -4,6 +4,7 @@ import { THEME_ICONS } from "../components/theme-icons";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
 import { ApiError } from "../api/client";
 import { authApi, type DeviceInfo } from "../api/auth";
+import { useHouseholdSettings, useSetWeekStartDay } from "../api/household";
 import "./screens.css";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -12,10 +13,23 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: "dark", label: "Sombre" },
 ];
 
+/** Jours de la semaine, indexés par la convention `Date.getDay()`. */
+const WEEK_DAY_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: "Lundi" },
+  { value: 2, label: "Mardi" },
+  { value: 3, label: "Mercredi" },
+  { value: 4, label: "Jeudi" },
+  { value: 5, label: "Vendredi" },
+  { value: 6, label: "Samedi" },
+  { value: 0, label: "Dimanche" },
+];
+
 /** Onglet Paramètres : apparence (thème), appareils enrôlés et déconnexion. */
 export function SettingsScreen() {
   const { preference, setPreference } = useTheme();
   const queryClient = useQueryClient();
+  const householdSettings = useHouseholdSettings();
+  const setWeekStartDay = useSetWeekStartDay();
   const devices = useQuery({
     queryKey: ["devices"],
     queryFn: authApi.listDevices,
@@ -71,6 +85,34 @@ export function SettingsScreen() {
         <p className="muted" style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
           « Système » suit le réglage clair/sombre de votre appareil.
         </p>
+      </div>
+
+      <div className="card settings-section">
+        <h2>Semaine</h2>
+        <label className="field">
+          <span className="field-label">Premier jour de la semaine</span>
+          <select
+            className="input"
+            value={householdSettings.data?.week_start_day ?? 1}
+            disabled={householdSettings.isLoading || setWeekStartDay.isPending}
+            onChange={(e) => setWeekStartDay.mutate(Number(e.target.value))}
+          >
+            {WEEK_DAY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="muted" style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
+          Découpe l'onglet Semaine et la liste de courses. Réglage partagé par
+          tout le foyer.
+        </p>
+        {setWeekStartDay.isError && (
+          <p className="settings-error" role="alert">
+            La modification a échoué. Réessayez.
+          </p>
+        )}
       </div>
 
       <div className="card settings-section">

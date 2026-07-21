@@ -21,7 +21,9 @@ use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::PostgresStore;
 
 use auth::domain::pairing::Argon2PairingHasher;
-use auth::infrastructure::{SqlxDeviceRepository, SqlxOnboardingRepository, SqlxUserRepository};
+use auth::infrastructure::{
+    SqlxDeviceRepository, SqlxHouseholdRepository, SqlxOnboardingRepository, SqlxUserRepository,
+};
 use auth::presentation::{self, AuthMode, AuthState};
 use kernel::HouseholdId;
 use kernel::DEMO_HOUSEHOLD_ID;
@@ -162,6 +164,7 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
     let auth_state = AuthState {
         webauthn: Arc::new(webauthn),
         users: Arc::new(SqlxUserRepository::new(pool.clone())),
+        households: Arc::new(SqlxHouseholdRepository::new(pool.clone())),
         devices: Arc::new(SqlxDeviceRepository::new(pool.clone())),
         onboarding: Arc::new(SqlxOnboardingRepository::new(pool.clone())),
         hasher: Arc::new(Argon2PairingHasher::new()),

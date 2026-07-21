@@ -41,8 +41,11 @@ pub use webauthn_rs::prelude::Url as WebauthnUrl;
 
 use crate::application::commands::{LogoutCommand, LogoutHandler};
 use crate::domain::device::{Device, DeviceLabel};
+use crate::domain::household::WeekStartDay;
 use crate::domain::pairing::{PairingCode, PairingHasher};
-use crate::domain::repository::{DeviceRepository, OnboardingRepository, UserRepository};
+use crate::domain::repository::{
+    DeviceRepository, HouseholdRepository, OnboardingRepository, UserRepository,
+};
 use crate::domain::user::{User, Username};
 
 /// Clé de stockage de l'identité en session.
@@ -165,6 +168,8 @@ pub struct AuthState {
     pub webauthn: Arc<Webauthn>,
     /// Repository des utilisateurs.
     pub users: Arc<dyn UserRepository>,
+    /// Repository des foyers (réglages : premier jour de la semaine, #57).
+    pub households: Arc<dyn HouseholdRepository>,
     /// Repository des appareils enrôlés.
     pub devices: Arc<dyn DeviceRepository>,
     /// Pilotage de la fenêtre d'enrôlement.
@@ -216,6 +221,10 @@ pub fn router(state: AuthState) -> Router {
         .route("/auth/login/finish", post(login_finish))
         .route("/auth/devices", get(list_devices))
         .route("/auth/devices/{id}", delete(revoke_device))
+        .route(
+            "/household/settings",
+            get(household_settings).put(update_household_settings),
+        )
         .with_state(state)
 }
 
@@ -569,6 +578,49 @@ async fn revoke_device(
         Ok(false) => StatusCode::NOT_FOUND,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
+}
+
+/// Réglages du foyer exposés au front (#57). Pour l'instant, le seul réglage
+/// partagé est le premier jour de la semaine.
+#[derive(Debug, Serialize, Deserialize)]
+struct HouseholdSettingsView {
+    /// Premier jour de la semaine, convention `Date.getDay()` (0 = dimanche …
+    /// 6 = samedi).
+    week_start_day: u8,
+}
+
+/// `GET /household/settings` — lit les réglages du foyer courant.
+async fn household_settings(
+    user: AuthUser,
+    State(state): State<AuthState>,
+) -> Result<Json<HouseholdSettingsView>, StatusCode> {
+    let day = state
+        .households
+        .week_start_day(user.household_id())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(HouseholdSettingsView {
+        week_start_day: day.value(),
+    }))
+}
+
+/// `PUT /household/settings` — met à jour le premier jour de la semaine. Le
+/// réglage porte sur le foyer (planning partagé) : n'importe quel membre peut
+/// le changer, et le changement s'applique à tous.
+async fn update_household_settings(
+    user: AuthUser,
+    State(state): State<AuthState>,
+    Json(body): Json<HouseholdSettingsView>,
+) -> Result<Json<HouseholdSettingsView>, StatusCode> {
+    let day = WeekStartDay::new(body.week_start_day).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    state
+        .households
+        .set_week_start_day(user.household_id(), day)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(HouseholdSettingsView {
+        week_start_day: day.value(),
+    }))
 }
 
 /// Établit la session (anti-fixation : régénère l'identifiant) puis y insère

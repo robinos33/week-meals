@@ -22,7 +22,7 @@ pub mod repository;
 pub mod user;
 
 pub use device::{Device, DeviceLabel, OnboardingWindow, MAX_ONBOARDING_ATTEMPTS};
-pub use household::{Household, HouseholdName};
+pub use household::{Household, HouseholdName, WeekStartDay};
 pub use pairing::{Argon2PairingHasher, PairingCode, PairingCodeHash, PairingError, PairingHasher};
 pub use repository::{DeviceRepository, HouseholdRepository, OnboardingRepository, UserRepository};
 pub use user::{User, Username};
@@ -33,6 +33,9 @@ pub enum AuthError {
     /// Le nom de foyer ne peut pas être vide.
     #[error("household name must not be empty")]
     EmptyHouseholdName,
+    /// Le premier jour de la semaine doit être dans `0..=6` (dimanche..samedi).
+    #[error("week start day must be between 0 and 6")]
+    InvalidWeekStartDay,
     /// Le pseudo ne peut pas être vide.
     #[error("username must not be empty")]
     EmptyUsername,
