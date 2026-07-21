@@ -49,6 +49,10 @@
 
 .fab {
   position: fixed;
+  /* Centre le « + » : sans ça le glyphe suit le flux du lien (en haut-gauche). */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   right: 1.15rem;
   bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 1rem);
   width: 56px;
