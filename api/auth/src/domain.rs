@@ -1,29 +1,33 @@
 //! Couche domaine de `auth` : entités, value objects, traits de repository
 //! et services purs. Aucune dépendance à SQLx/Axum (règle de convention).
 //!
-//! Modélise l'authentification sans email (cf. [ADR-0002]) :
+//! Modélise l'authentification par **passkeys** (cf. [ADR-0006]) :
 //!
 //! - [`household`]  — le foyer ([`Household`], [`HouseholdName`]).
-//! - [`user`]       — un membre du foyer ([`User`], [`Username`]).
-//! - [`password`]   — secret + hachage **Argon2id** pur ([`Password`],
-//!   [`PasswordHash`], port [`PasswordHasher`], service [`Argon2Hasher`]).
+//! - [`user`]       — un membre du foyer ([`User`], [`Username`]) : un pseudo
+//!   d'affichage, plus aucun secret.
+//! - [`device`]     — un appareil enrôlé porteur d'une passkey ([`Device`],
+//!   [`DeviceLabel`]) et la fenêtre d'enrôlement ([`OnboardingWindow`]).
+//! - [`pairing`]    — code d'appairage à usage unique + hachage Argon2id
+//!   ([`PairingCode`], [`PairingCodeHash`], port [`PairingHasher`]).
 //! - [`repository`] — ports de persistance ([`HouseholdRepository`],
-//!   [`UserRepository`]).
+//!   [`UserRepository`], [`DeviceRepository`], [`OnboardingRepository`]).
 //!
-//! [ADR-0002]: ../../../docs/adr/0002-auth-sans-email.md
+//! [ADR-0006]: ../../../docs/adr/0006-auth-passkeys-appareils-enroles.md
 
+pub mod device;
 pub mod household;
-pub mod password;
+pub mod pairing;
 pub mod repository;
 pub mod user;
 
+pub use device::{Device, DeviceLabel, OnboardingWindow, MAX_ONBOARDING_ATTEMPTS};
 pub use household::{Household, HouseholdName};
-pub use password::{Argon2Hasher, Password, PasswordError, PasswordHash, PasswordHasher};
-pub use repository::{HouseholdRepository, UserRepository};
+pub use pairing::{Argon2PairingHasher, PairingCode, PairingCodeHash, PairingError, PairingHasher};
+pub use repository::{DeviceRepository, HouseholdRepository, OnboardingRepository, UserRepository};
 pub use user::{User, Username};
 
-/// Violation d'un invariant du domaine `auth` (hors hachage, cf.
-/// [`PasswordError`]).
+/// Violation d'un invariant du domaine `auth`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AuthError {
     /// Le nom de foyer ne peut pas être vide.
@@ -38,10 +42,13 @@ pub enum AuthError {
         /// Longueur maximale autorisée.
         max: usize,
     },
-    /// Le mot de passe est plus court que le minimum requis.
-    #[error("password must be at least {min} characters")]
-    PasswordTooShort {
-        /// Longueur minimale requise.
-        min: usize,
+    /// Le libellé d'appareil ne peut pas être vide.
+    #[error("device label must not be empty")]
+    EmptyDeviceLabel,
+    /// Le libellé d'appareil dépasse la longueur maximale autorisée.
+    #[error("device label must be at most {max} characters")]
+    DeviceLabelTooLong {
+        /// Longueur maximale autorisée.
+        max: usize,
     },
 }

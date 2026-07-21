@@ -1,0 +1,118 @@
+/* Écrans d'authentification (cf. ADR-0006) : plein écran, centrés, en tenant
+   compte des zones sûres (encoches) du plein écran PWA. */
+
+.auth-splash,
+.auth-screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: calc(env(safe-area-inset-top) + 1.5rem) 1.25rem
+    calc(env(safe-area-inset-bottom) + 1.5rem);
+  background: var(--color-bg);
+}
+
+.auth-splash__logo {
+  font-size: 3rem;
+  animation: auth-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes auth-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 22rem;
+  padding: 1.75rem 1.5rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.auth-card__logo {
+  font-size: 2.75rem;
+}
+
+.auth-card__title {
+  font-size: 1.6rem;
+  margin: 0;
+}
+
+.auth-card__cta {
+  margin-top: 0.8rem;
+  width: 100%;
+}
+
+.auth-card__hint {
+  margin-top: 0.8rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.auth-card__hint code,
+.auth-card__message code {
+  font-size: 0.8rem;
+  background: var(--color-surface-2);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+}
+
+.auth-card__message {
+  margin-top: 0.5rem;
+  color: var(--color-danger);
+  font-size: 0.9rem;
+}
+
+/* --- Formulaire d'enrôlement ---------------------------------------------- */
+
+.auth-enroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.auth-enroll__sep {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 0.9rem 0 0.3rem;
+}
+
+.auth-enroll__title {
+  font-size: 1.05rem;
+  margin: 0;
+  text-align: center;
+}
+
+.auth-enroll__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+.auth-enroll__field input {
+  min-height: var(--tap-target);
+  padding: 0 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 1rem;
+}
+
+.auth-enroll__field input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}

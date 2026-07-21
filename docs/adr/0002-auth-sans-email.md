@@ -1,6 +1,7 @@
 # ADR-0002 — Authentification sans email
 
-- **Statut :** acceptée (2026-07-11)
+- **Statut :** remplacée (2026-07-20) par
+  [ADR-0006](0006-auth-passkeys-appareils-enroles.md)
 
 ## Contexte
 

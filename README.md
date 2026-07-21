@@ -19,8 +19,9 @@ référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredien
 - 📅 **Semaine** — calendrier 7 jours × 2 créneaux (midi/soir), on y place les recettes
 - 🛒 **Liste de courses** — générée depuis une plage de jours du calendrier,
   éditable, cochable en magasin (UX inspirée de Google Keep), **fonctionne hors-ligne**
-- 👥 **Foyer** — auth pseudo + mot de passe, **aucun email requis**, accès sur
-  invitation uniquement (open-source friendly : zéro donnée perso à configurer)
+- 👥 **Foyer** — auth par **passkeys** (Face ID / empreinte), **aucun email ni
+  mot de passe**, enrôlement des appareils par code d'appairage (open-source
+  friendly : zéro donnée perso à configurer)
 
 ## Stack
 
@@ -106,16 +107,31 @@ cuisine — pas de sélecteur HTML propre à chaque site. Les quantités des sit
 relire** avant import. Les cuillères sont converties (soupe = 15 mL, café =
 5 mL), de même que cL/dL ; sans unité reconnue, la ligne devient une pièce.
 
-### Mode public (preview sans compte)
+### Authentification par passkeys (cf. [ADR-0006](docs/adr/0006-auth-passkeys-appareils-enroles.md))
 
-`.env.example` livre `AUTH_DISABLED=1` : l'API n'exige alors aucune session et
-scope tout au foyer de démonstration (migration `seed_demo_household`), et le
-front n'affiche pas de mire de connexion. Pratique pour voir le résultat « en
-live » avant que le parcours d'invitation ne soit branché. **Ne jamais activer
-`AUTH_DISABLED` en production** : remettre la valeur à `0` y rétablit l'auth.
+L'accès se fait par **passkeys WebAuthn** : « Continuer avec Face ID », sans
+mot de passe ni identifiant à saisir. Un appareil s'enrôle pendant une fenêtre
+ouverte au CLI, protégée par un code d'appairage à usage unique :
 
-Avant tout déploiement, remplacer les valeurs `change-me` de `.env`
-(`SESSION_SECRET`, `BOOTSTRAP_INVITE_CODE`) — voir [ADR-0002](docs/adr/0002-auth-sans-email.md).
+```sh
+weekmeals device open-window --minutes 15   # imprime le code d'appairage
+weekmeals device list                        # appareils enrôlés
+weekmeals device revoke <id>                 # révoque un appareil
+weekmeals device close-window                # ferme la fenêtre
+```
+
+Le mode est piloté par `AUTH_MODE` :
+
+- `locked` (défaut, fail-closed) : seuls les appareils enrôlés passent.
+- `disabled` : l'API n'exige aucune session et scope tout au foyer de
+  démonstration (migration `seed_demo_household`) ; le front n'affiche pas
+  d'écran de connexion. Pratique en dev/preview. **Ne jamais utiliser en
+  production.** (L'ancien `AUTH_DISABLED=1` reste accepté et équivaut à
+  `disabled`.)
+
+En mode `locked`, front et API doivent partager le même domaine parent
+(`WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN`). Avant tout déploiement, remplacer la
+valeur `change-me` de `SESSION_SECRET` dans `.env`.
 
 ### Workflow de migration
 

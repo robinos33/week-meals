@@ -1,10 +1,10 @@
 //! Un utilisateur (`User`) : membre d'un foyer, identifié par un pseudo. Pas
-//! d'email (cf. ADR-0002). Le pseudo est unique globalement — il suffit à
-//! identifier l'utilisateur au login, sans sélection de foyer.
+//! d'email ni de mot de passe (cf. ADR-0006) — l'identité est portée par les
+//! passkeys de ses appareils. Le pseudo n'est qu'un **libellé d'affichage** :
+//! il n'est plus unique globalement (il ne sert plus à se connecter).
 
 use kernel::{HouseholdId, UserId};
 
-use super::password::PasswordHash;
 use super::AuthError;
 
 /// Longueur maximale d'un pseudo.
@@ -12,8 +12,8 @@ const USERNAME_MAX_LEN: usize = 32;
 
 /// Pseudo d'un utilisateur : chaîne non vide, bornée en longueur.
 ///
-/// Trim appliqué à la construction. La comparaison reste sensible à la casse :
-/// l'unicité globale est portée par la contrainte SQL `users.username unique`.
+/// Trim appliqué à la construction. Simple libellé d'affichage depuis
+/// l'ADR-0006 (plus de contrainte d'unicité).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Username(String);
 
@@ -49,44 +49,36 @@ impl std::fmt::Display for Username {
     }
 }
 
-/// Un utilisateur : membre d'un foyer, avec pseudo et hash de mot de passe.
+/// Un utilisateur : membre d'un foyer, avec un pseudo d'affichage. Son identité
+/// est portée par les passkeys de ses [`Device`](super::device::Device)s.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
-    /// Identifiant de l'utilisateur.
+    /// Identifiant de l'utilisateur (aussi le handle WebAuthn, cf. ADR-0006).
     pub id: UserId,
     /// Foyer d'appartenance (toutes les données y sont scopées).
     pub household_id: HouseholdId,
-    /// Pseudo (unique globalement).
+    /// Pseudo d'affichage.
     pub username: Username,
-    /// Hash Argon2id du mot de passe.
-    pub password_hash: PasswordHash,
 }
 
 impl User {
     /// Crée un utilisateur avec un identifiant frais.
     #[must_use]
-    pub fn new(household_id: HouseholdId, username: Username, password_hash: PasswordHash) -> Self {
+    pub fn new(household_id: HouseholdId, username: Username) -> Self {
         Self {
             id: UserId::new(),
             household_id,
             username,
-            password_hash,
         }
     }
 
     /// Reconstitue un utilisateur depuis la persistance (identifiant connu).
     #[must_use]
-    pub fn from_parts(
-        id: UserId,
-        household_id: HouseholdId,
-        username: Username,
-        password_hash: PasswordHash,
-    ) -> Self {
+    pub fn from_parts(id: UserId, household_id: HouseholdId, username: Username) -> Self {
         Self {
             id,
             household_id,
             username,
-            password_hash,
         }
     }
 }

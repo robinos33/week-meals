@@ -13,8 +13,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
+use auth::domain::pairing::{Argon2PairingHasher, PairingHasher};
+use auth::domain::repository::{DeviceRepository, OnboardingRepository, UserRepository};
+use auth::domain::user::Username;
+use auth::domain::PairingCode;
+use auth::infrastructure::{SqlxDeviceRepository, SqlxOnboardingRepository, SqlxUserRepository};
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
-use kernel::{HouseholdId, RecipeId, DEMO_HOUSEHOLD_ID};
+use kernel::{DeviceId, HouseholdId, RecipeId, UserId, DEMO_HOUSEHOLD_ID};
 use recipes::domain::RecipeRepository;
 use recipes::infrastructure::SqlxRecipeRepository;
 use sqlx::postgres::PgPoolOptions;
@@ -80,6 +86,40 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+    /// Gestion des appareils enrôlés et de la fenêtre d'enrôlement (cf. ADR-0006).
+    Device {
+        #[command(subcommand)]
+        command: DeviceCommand,
+        /// Foyer cible (UUID). Défaut : le foyer de démonstration.
+        #[arg(long, global = true)]
+        household: Option<Uuid>,
+    },
+}
+
+/// Sous-commandes d'administration des appareils (racine de confiance : le
+/// shell serveur). Ouvrir la fenêtre imprime un code d'appairage à usage unique.
+#[derive(Subcommand)]
+enum DeviceCommand {
+    /// Ouvre la fenêtre d'enrôlement et imprime le code d'appairage.
+    OpenWindow {
+        /// Durée d'ouverture en minutes (1 à 120). Bornée : une fenêtre qu'on
+        /// laisse ouverte des heures cesse d'être une fenêtre.
+        #[arg(long, default_value_t = 15, value_parser = clap::value_parser!(i64).range(1..=120))]
+        minutes: i64,
+        /// Rattache l'enrôlement à un utilisateur existant (pseudo ou UUID) —
+        /// deuxième téléphone, tablette. Sinon un nouvel utilisateur est créé.
+        #[arg(long)]
+        r#for: Option<String>,
+    },
+    /// Ferme la fenêtre d'enrôlement immédiatement.
+    CloseWindow,
+    /// Liste les appareils enrôlés du foyer.
+    List,
+    /// Révoque un appareil enrôlé (UUID).
+    Revoke {
+        /// Identifiant de l'appareil à révoquer.
+        id: Uuid,
+    },
 }
 
 #[tokio::main]
@@ -131,6 +171,9 @@ async fn main() -> Result<()> {
         }
         // Traité plus haut, avant l'ouverture du pool.
         Command::Scrape { .. } => unreachable!("scrape est traité avant la base"),
+        Command::Device { command, household } => {
+            run_device(command, &pool, resolve_household(household)).await?;
+        }
         Command::Export { out, household } => {
             let household = resolve_household(household);
             export(&repo, household, out.as_deref()).await?;
@@ -154,6 +197,91 @@ async fn main() -> Result<()> {
 /// Foyer cible : celui passé en option, sinon le foyer de démonstration.
 fn resolve_household(explicit: Option<Uuid>) -> HouseholdId {
     HouseholdId::from(explicit.unwrap_or(DEMO_HOUSEHOLD_ID))
+}
+
+/// Exécute une sous-commande `device` (cf. ADR-0006).
+async fn run_device(
+    command: DeviceCommand,
+    pool: &sqlx::PgPool,
+    household: HouseholdId,
+) -> Result<()> {
+    let devices = SqlxDeviceRepository::new(pool.clone());
+    let onboarding = SqlxOnboardingRepository::new(pool.clone());
+    let users = SqlxUserRepository::new(pool.clone());
+
+    match command {
+        DeviceCommand::OpenWindow { minutes, r#for } => {
+            // Cible : utilisateur existant si `--for`, sinon nouvel utilisateur.
+            let target_user = match r#for {
+                Some(reference) => Some(resolve_user(&users, &reference).await?),
+                None => None,
+            };
+            let code = PairingCode::generate();
+            let hash = Argon2PairingHasher::new()
+                .hash(&code)
+                .map_err(|e| anyhow::anyhow!("hachage du code d'appairage : {e}"))?;
+            let until = Utc::now() + Duration::minutes(minutes);
+            onboarding
+                .open(household, until, &hash, target_user)
+                .await?;
+
+            println!(
+                "Fenêtre d'enrôlement ouverte jusqu'à {} ({minutes} min).",
+                until.format("%H:%M")
+            );
+            match target_user {
+                Some(id) => println!("Appareil rattaché à l'utilisateur {id}."),
+                None => println!("Un nouvel utilisateur sera créé à l'enrôlement."),
+            }
+            println!("Code d'appairage :  {}", code.formatted());
+        }
+        DeviceCommand::CloseWindow => {
+            onboarding.close(household).await?;
+            println!("Fenêtre d'enrôlement fermée.");
+        }
+        DeviceCommand::List => {
+            let list = devices.list_by_household(household).await?;
+            if list.is_empty() {
+                println!("Aucun appareil enrôlé dans le foyer {household}.");
+            } else {
+                for device in list {
+                    let last = device
+                        .last_seen_at
+                        .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+                        .unwrap_or_else(|| "jamais".to_owned());
+                    println!(
+                        "{}  {:<24}  dernière activité : {last}",
+                        device.id,
+                        device.label.as_str()
+                    );
+                }
+            }
+        }
+        DeviceCommand::Revoke { id } => {
+            if devices.revoke(DeviceId::from(id), household).await? {
+                println!("Appareil {id} révoqué.");
+            } else {
+                bail!("aucun appareil {id} dans le foyer {household}");
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Résout une référence `--for` (UUID d'utilisateur ou pseudo) en `UserId`.
+async fn resolve_user(users: &SqlxUserRepository, reference: &str) -> Result<UserId> {
+    if let Ok(uuid) = reference.parse::<Uuid>() {
+        return match users.find(UserId::from(uuid)).await? {
+            Some(user) => Ok(user.id),
+            None => bail!("aucun utilisateur d'identifiant {reference}"),
+        };
+    }
+    let username =
+        Username::new(reference).map_err(|e| anyhow::anyhow!("pseudo invalide : {e}"))?;
+    match users.find_by_username(&username).await? {
+        Some(user) => Ok(user.id),
+        None => bail!("aucun utilisateur nommé « {reference} »"),
+    }
 }
 
 /// Clé d'upsert : titre normalisé (trim + minuscules) pour tolérer casse et
