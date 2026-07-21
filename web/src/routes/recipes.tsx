@@ -1,13 +1,35 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { totalTime, useRecipes } from "../api/recipes";
+import { totalTime, useRecipes, type RecipeView } from "../api/recipes";
 import "./screens.css";
+
+/** Médailles du podium des recettes les plus cuisinées (#58). */
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+/**
+ * Podium du foyer : identifiant → rang (0..2) des trois recettes les plus
+ * cuisinées. Établi sur la liste **complète** (indépendante de la recherche)
+ * pour que la médaille garde son sens quel que soit le filtre. Les recettes
+ * jamais cuisinées (`cooked_count === 0`) n'entrent pas au podium : trois
+ * médailles arbitraires sur une grille neuve n'auraient pas de sens.
+ */
+function buildPodium(recipes: RecipeView[]): Map<string, number> {
+  const ranked = recipes
+    .filter((recipe) => recipe.cooked_count > 0)
+    .sort((a, b) => b.cooked_count - a.cooked_count || a.title.localeCompare(b.title))
+    .slice(0, MEDALS.length);
+  return new Map(ranked.map((recipe, index) => [recipe.id, index]));
+}
 
 /** Onglet Recettes : grille de cartes, recherche, bouton flottant « + ». */
 export function RecipesScreen() {
   const [search, setSearch] = useState("");
   const query = useRecipes(search);
   const recipes = query.data ?? [];
+  // Classement du podium sur la liste complète du foyer (dédupliquée par
+  // React Query avec `useRecipeSummaries` quand la recherche est vide).
+  const allRecipes = useRecipes("");
+  const podium = useMemo(() => buildPodium(allRecipes.data ?? []), [allRecipes.data]);
 
   return (
     <section>
@@ -62,6 +84,14 @@ export function RecipesScreen() {
               className="card recipe-card"
             >
               <div className="recipe-card__photo">
+                {podium.has(recipe.id) && (
+                  <span
+                    className="recipe-card__medal"
+                    aria-label={`${podium.get(recipe.id)! + 1}e recette la plus cuisinée`}
+                  >
+                    {MEDALS[podium.get(recipe.id)!]}
+                  </span>
+                )}
                 {recipe.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
               </div>
               <div className="recipe-card__body">

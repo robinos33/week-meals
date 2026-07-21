@@ -15,8 +15,8 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use crate::domain::{
-    IngredientReference, PlannedIngredient, PlannedIngredientsSource, ReferenceCatalog,
-    ReferenceRepository, ShoppingItem, ShoppingListRepository,
+    CookedCountRecorder, IngredientReference, PlannedIngredient, PlannedIngredientsSource,
+    ReferenceCatalog, ReferenceRepository, ShoppingItem, ShoppingListRepository,
 };
 
 /// Traduit une erreur SQLx en erreur de repository agnostique.
@@ -405,5 +405,59 @@ impl PlannedIngredientsSource for SqlxPlannedIngredients {
                 Ok(PlannedIngredient::new(name, quantity(amount, &unit)?))
             })
             .collect()
+    }
+}
+
+// --- Compteur « cuisiné X fois » ------------------------------------------
+
+/// Enregistre les recettes cuisinées (#58), en écrivant sur `meal_plan` et
+/// `recipes`. Comme [`SqlxPlannedIngredients`], il croise volontairement
+/// d'autres domaines, confiné à l'infrastructure.
+pub struct SqlxCookedCounter {
+    pool: PgPool,
+}
+
+impl SqlxCookedCounter {
+    /// Construit le compteur sur un pool partagé.
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait::async_trait]
+impl CookedCountRecorder for SqlxCookedCounter {
+    async fn record_cooked(
+        &self,
+        household_id: HouseholdId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<(), RepositoryError> {
+        // Un seul énoncé, donc atomique : la CTE modificatrice marque les
+        // créneaux encore vierges (`counted_at is null`) de la plage, compte
+        // combien de fois chaque recette y apparaît, et incrémente son compteur
+        // d'autant. `last_cooked_at` départage le podium à égalité.
+        sqlx::query(
+            "with newly as ( \
+                 update meal_plan \
+                 set counted_at = now() \
+                 where household_id = $1 and meal_date between $2 and $3 \
+                   and counted_at is null \
+                 returning recipe_id \
+             ), tally as ( \
+                 select recipe_id, count(*)::int as n from newly group by recipe_id \
+             ) \
+             update recipes r \
+             set cooked_count = r.cooked_count + t.n, last_cooked_at = now() \
+             from tally t \
+             where r.id = t.recipe_id and r.household_id = $1",
+        )
+        .bind(household_id.as_uuid())
+        .bind(from)
+        .bind(to)
+        .execute(&self.pool)
+        .await
+        .map_err(backend)?;
+        Ok(())
     }
 }

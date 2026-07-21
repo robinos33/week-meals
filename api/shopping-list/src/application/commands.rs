@@ -8,8 +8,8 @@ use kernel::{HouseholdId, Quantity, QuantityError, RepositoryError, ShoppingItem
 
 use crate::domain::reference::normalize_name;
 use crate::domain::{
-    aggregate_purchases, PlannedIngredientsSource, ReferenceRepository, ShoppingItem,
-    ShoppingListRepository,
+    aggregate_purchases, CookedCountRecorder, PlannedIngredientsSource, ReferenceRepository,
+    ShoppingItem, ShoppingListRepository,
 };
 
 // --- Génération -----------------------------------------------------------
@@ -46,6 +46,7 @@ pub struct GenerateListHandler<'a> {
     items: &'a dyn ShoppingListRepository,
     references: &'a dyn ReferenceRepository,
     planned: &'a dyn PlannedIngredientsSource,
+    cooked: &'a dyn CookedCountRecorder,
 }
 
 impl<'a> GenerateListHandler<'a> {
@@ -55,11 +56,13 @@ impl<'a> GenerateListHandler<'a> {
         items: &'a dyn ShoppingListRepository,
         references: &'a dyn ReferenceRepository,
         planned: &'a dyn PlannedIngredientsSource,
+        cooked: &'a dyn CookedCountRecorder,
     ) -> Self {
         Self {
             items,
             references,
             planned,
+            cooked,
         }
     }
 
@@ -110,6 +113,20 @@ impl<'a> GenerateListHandler<'a> {
         if self
             .items
             .replace_generated(command.household_id, &items)
+            .await
+            .is_err()
+        {
+            return GenerateListResponse::Unavailable;
+        }
+
+        // Générer vaut engagement (#58) : on incrémente le compteur « cuisiné X
+        // fois » des recettes de la plage. Fait **après** le remplacement des
+        // lignes, et sur une garde par créneau (`counted_at`) : si l'appel
+        // échoue, les cases restent non comptées et seront rattrapées à la
+        // prochaine génération — jamais de double comptage, jamais de perte.
+        if self
+            .cooked
+            .record_cooked(command.household_id, command.from, command.to)
             .await
             .is_err()
         {

@@ -142,7 +142,17 @@ impl<'a> UpdateRecipeHandler<'a> {
         };
 
         match self.recipes.update(&recipe).await {
-            Ok(()) => UpdateRecipeResponse::Updated(recipe),
+            // La mise à jour ne touche pas `cooked_count` (compteur du podium,
+            // #58) ; on relit la recette pour renvoyer sa valeur à jour plutôt
+            // que le `0` porté par l'entité fraîchement construite.
+            Ok(()) => match self
+                .recipes
+                .find(command.household_id, command.recipe_id)
+                .await
+            {
+                Ok(Some(fresh)) => UpdateRecipeResponse::Updated(fresh),
+                _ => UpdateRecipeResponse::Updated(recipe),
+            },
             Err(RepositoryError::NotFound) => UpdateRecipeResponse::NotFound,
             Err(_) => UpdateRecipeResponse::Unavailable,
         }

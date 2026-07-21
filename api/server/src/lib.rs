@@ -33,7 +33,7 @@ use recipes::domain::PhotoStorage;
 use recipes::infrastructure::{R2Config, R2PhotoStorage, SqlxRecipeRepository};
 use recipes::presentation::RecipeState;
 use shopping_list::infrastructure::{
-    SqlxPlannedIngredients, SqlxReferenceRepository, SqlxShoppingListRepository,
+    SqlxCookedCounter, SqlxPlannedIngredients, SqlxReferenceRepository, SqlxShoppingListRepository,
 };
 use shopping_list::presentation::ShoppingListState;
 
@@ -181,6 +181,7 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
         items: Arc::new(SqlxShoppingListRepository::new(pool.clone())),
         references: Arc::new(SqlxReferenceRepository::new(pool.clone())),
         planned: Arc::new(SqlxPlannedIngredients::new(pool.clone())),
+        cooked: Arc::new(SqlxCookedCounter::new(pool.clone())),
     };
 
     Router::new()

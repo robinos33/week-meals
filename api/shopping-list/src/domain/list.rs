@@ -112,6 +112,31 @@ pub trait ReferenceRepository: Send + Sync {
     async fn catalog(&self) -> Result<ReferenceCatalog, RepositoryError>;
 }
 
+/// Port d'enregistrement des recettes cuisinées (#58).
+///
+/// Générer la liste vaut engagement : à ce moment-là, chaque créneau du
+/// calendrier de la plage incrémente le compteur « cuisiné X fois » de sa
+/// recette. La régénération d'une même semaine est fréquente (ajout d'une
+/// recette en cours de route), d'où la garde : un créneau ne compte qu'**une**
+/// fois — l'implémentation marque les cases déjà comptées et n'incrémente que
+/// les nouvelles. Une recette posée sur deux créneaux compte bien deux fois.
+///
+/// Ce port croise `meal_plan` et `recipes` (autres domaines) : comme
+/// [`PlannedIngredientsSource`], c'est un choix délibéré, confiné à
+/// l'infrastructure.
+#[async_trait::async_trait]
+pub trait CookedCountRecorder: Send + Sync {
+    /// Compte les créneaux non encore comptés du foyer entre `from` et `to`
+    /// (bornes incluses) et incrémente le compteur de chaque recette d'autant.
+    /// Opération idempotente sur une même plage déjà comptée.
+    async fn record_cooked(
+        &self,
+        household_id: HouseholdId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<(), RepositoryError>;
+}
+
 /// Port de lecture des ingrédients planifiés sur une plage de jours.
 ///
 /// Projection **en lecture seule** au travers du calendrier et des recettes :
