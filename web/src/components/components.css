@@ -23,22 +23,61 @@
   align-items: center;
 }
 
-/* Accès Paramètres, coin haut-droit (respecte la zone sûre). Positionné en
-   absolu : il reste en haut de la page et défile avec le contenu plutôt que
-   de rester collé au-dessus des écrans. */
-.app-shell__settings {
+/* Menu « ⋮ », coin haut-droit (respecte la zone sûre). Positionné en absolu :
+   il reste en haut de la page et défile avec le contenu plutôt que de rester
+   collé au-dessus des écrans. */
+.app-menu {
   position: absolute;
   top: calc(env(safe-area-inset-top) + 0.5rem);
   right: 0.6rem;
   z-index: 25;
+}
+
+.app-menu__trigger {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: var(--settings-size);
   height: var(--settings-size);
+  border: none;
   color: var(--color-muted);
   background: color-mix(in srgb, var(--color-bg) 70%, transparent);
   border-radius: 50%;
+  cursor: pointer;
+}
+
+/* Panneau déroulant, aligné sous le bouton et à droite. */
+.app-menu__panel {
+  position: absolute;
+  top: calc(var(--settings-size) + 0.25rem);
+  right: 0;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.app-menu__item {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-target);
+  padding: 0 0.75rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.app-menu__item:hover {
+  background: var(--color-surface-2);
 }
 
 /* --- Barre d'onglets ------------------------------------------------------ */

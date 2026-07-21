@@ -89,7 +89,17 @@ export function WeekScreen() {
             )
           }
         >
-          {generateList.isPending ? "Génération…" : "Liste de courses"}
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="18" height="18">
+            <path
+              d="M6 8h12l-1 11H7L6 8zM9 8a3 3 0 0 1 6 0M12 11.5v4M10 13.5h4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          {generateList.isPending ? "Génération…" : "Générer la liste"}
         </button>
       </header>
 
