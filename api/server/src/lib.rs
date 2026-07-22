@@ -30,7 +30,7 @@ use kernel::DEMO_HOUSEHOLD_ID;
 use meal_plan::infrastructure::SqlxMealPlanRepository;
 use meal_plan::presentation::MealPlanState;
 use recipes::domain::PhotoStorage;
-use recipes::infrastructure::{R2Config, R2PhotoStorage, SqlxRecipeRepository};
+use recipes::infrastructure::{HttpRecipeScraper, R2Config, R2PhotoStorage, SqlxRecipeRepository};
 use recipes::presentation::RecipeState;
 use shopping_list::infrastructure::{
     SqlxCookedCounter, SqlxPlannedIngredients, SqlxReferenceRepository, SqlxShoppingListRepository,
@@ -173,6 +173,8 @@ pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Route
     let recipe_state = RecipeState {
         recipes: Arc::new(SqlxRecipeRepository::new(pool.clone())),
         photos: photo_storage_from_env(),
+        // Import par URL (#61) : garde SSRF, c'est le serveur qui fetch.
+        scraper: Arc::new(HttpRecipeScraper::guarded()),
     };
     let meal_plan_state = MealPlanState {
         plan: Arc::new(SqlxMealPlanRepository::new(pool.clone())),

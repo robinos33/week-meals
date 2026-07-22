@@ -119,10 +119,34 @@ async fn recipe_crud_flow() {
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
 
     let gone = router
+        .clone()
         .oneshot(get(&format!("/recipes/{id}")))
         .await
         .unwrap();
     assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+
+    // Import par URL (#61) : la route est montée et la garde SSRF refuse une
+    // adresse interne (422), sans dépendre du réseau.
+    let non_https = router
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/recipes/scrape",
+            &serde_json::json!({ "url": "http://example.com/rata" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(non_https.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let loopback = router
+        .oneshot(json_request(
+            "POST",
+            "/recipes/scrape",
+            &serde_json::json!({ "url": "https://127.0.0.1/rata" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(loopback.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 /// Requête GET simple.

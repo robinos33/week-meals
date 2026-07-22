@@ -12,6 +12,8 @@ use crate::domain::RecipeIngredient;
 pub mod commands;
 /// Lectures : Get / List / Search.
 pub mod queries;
+/// Import d'une recette par URL (préremplissage du formulaire, #61).
+pub mod scrape;
 
 /// Ingrédient tel que reçu de la présentation (types bruts). Converti en
 /// [`RecipeIngredient`] du domaine, avec validation.

@@ -81,6 +81,28 @@ impl RecipeYaml {
         .with_context(|| format!("recette « {title} » invalide"))
     }
 
+    /// Construit un YAML de seed depuis un brouillon extrait d'une page web
+    /// (`weekmeals scrape`, #61). Le résultat reste à relire avant import.
+    #[must_use]
+    pub fn from_scraped(recipe: recipes::domain::ScrapedRecipe) -> Self {
+        Self {
+            title: recipe.title,
+            prep_time_min: recipe.prep_time_min,
+            cook_time_min: recipe.cook_time_min,
+            photo: recipe.photo,
+            ingredients: recipe
+                .ingredients
+                .into_iter()
+                .map(|i| IngredientYaml {
+                    name: i.name,
+                    quantity: i.amount,
+                    unit: i.unit,
+                })
+                .collect(),
+            steps: recipe.steps,
+        }
+    }
+
     /// Projette une recette du domaine vers sa forme YAML (pour l'export).
     #[must_use]
     pub fn from_recipe(recipe: &Recipe) -> Self {

@@ -14,6 +14,10 @@ use uuid::Uuid;
 
 use crate::domain::{Recipe, RecipeIngredient, RecipeRepository};
 
+/// Import d'une recette par URL (scraping JSON-LD + garde SSRF).
+pub mod scrape;
+pub use scrape::HttpRecipeScraper;
+
 /// Traduit une erreur SQLx en erreur de repository agnostique.
 fn backend(err: sqlx::Error) -> RepositoryError {
     RepositoryError::Backend(err.to_string())

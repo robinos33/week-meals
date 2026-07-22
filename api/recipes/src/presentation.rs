@@ -2,13 +2,15 @@
 //! sont protégées par l'extractor [`AuthUser`] (auth) et **scopées au foyer**
 //! de l'utilisateur connecté.
 //!
-//! | Méthode | Route            | Use case                    |
-//! |---------|------------------|-----------------------------|
-//! | GET     | `/recipes`       | liste / recherche (`?search`) |
-//! | POST    | `/recipes`       | création                    |
-//! | GET     | `/recipes/:id`   | détail                      |
-//! | PUT     | `/recipes/:id`   | mise à jour                 |
-//! | DELETE  | `/recipes/:id`   | suppression                 |
+//! | Méthode | Route                     | Use case                      |
+//! |---------|---------------------------|-------------------------------|
+//! | GET     | `/recipes`                | liste / recherche (`?search`) |
+//! | POST    | `/recipes`                | création                      |
+//! | POST    | `/recipes/scrape`         | import par URL → brouillon (#61) |
+//! | POST    | `/recipes/photos/presign` | présignature upload photo     |
+//! | GET     | `/recipes/:id`            | détail                        |
+//! | PUT     | `/recipes/:id`            | mise à jour                   |
+//! | DELETE  | `/recipes/:id`            | suppression                   |
 
 use std::sync::Arc;
 
@@ -31,8 +33,11 @@ use crate::application::queries::{
     GetRecipeHandler, GetRecipeQuery, GetRecipeResponse, ListRecipesHandler, ListRecipesQuery,
     ListRecipesResponse,
 };
+use crate::application::scrape::{ScrapeRecipeCommand, ScrapeRecipeHandler, ScrapeRecipeResponse};
 use crate::application::IngredientInput;
-use crate::domain::{PhotoError, PhotoStorage, Recipe, RecipeRepository};
+use crate::domain::{
+    PhotoError, PhotoStorage, Recipe, RecipeRepository, RecipeScraper, ScrapeError, ScrapedRecipe,
+};
 
 /// État injecté dans les routes recettes.
 #[derive(Clone)]
@@ -42,14 +47,17 @@ pub struct RecipeState {
     /// Stockage des photos (présignature). `None` si R2 n'est pas configuré :
     /// la route de présignature répond alors `503`.
     pub photos: Option<Arc<dyn PhotoStorage>>,
+    /// Scraper d'import par URL (#61). Garde SSRF côté implémentation.
+    pub scraper: Arc<dyn RecipeScraper>,
 }
 
 /// Sous-router des recettes, monté par le `server`.
 pub fn router(state: RecipeState) -> Router {
     Router::new()
         .route("/recipes", get(list).post(create))
-        // Route à 3 segments : ne chevauche pas `/recipes/{id}` (2 segments).
+        // Routes statiques : segment fixe prioritaire sur `/recipes/{id}`.
         .route("/recipes/photos/presign", post(presign_photo))
+        .route("/recipes/scrape", post(scrape_recipe))
         .route("/recipes/{id}", get(detail).put(update).delete(delete))
         .with_state(state)
 }
@@ -328,5 +336,110 @@ async fn presign_photo(
             invalid("type d'image non pris en charge (jpeg, png ou webp)".to_owned())
         }
         Err(PhotoError::Backend(_)) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+// --- Import par URL (#61) -------------------------------------------------
+
+/// Corps de la demande d'import : l'URL de la page de recette.
+#[derive(Debug, Deserialize)]
+struct ScrapeBody {
+    url: String,
+}
+
+/// Brouillon renvoyé au front : mêmes champs que le corps de création, pour être
+/// injecté directement dans l'état du formulaire (à corriger avant d'enregistrer).
+#[derive(Debug, Serialize)]
+struct RecipeDraftView {
+    title: String,
+    prep_time_min: Option<u32>,
+    cook_time_min: Option<u32>,
+    photo: Option<String>,
+    ingredients: Vec<IngredientView>,
+    steps: Vec<String>,
+}
+
+impl From<ScrapedRecipe> for RecipeDraftView {
+    fn from(recipe: ScrapedRecipe) -> Self {
+        Self {
+            title: recipe.title,
+            prep_time_min: recipe.prep_time_min,
+            cook_time_min: recipe.cook_time_min,
+            photo: recipe.photo,
+            ingredients: recipe
+                .ingredients
+                .into_iter()
+                .map(|i| IngredientView {
+                    name: i.name,
+                    amount: i.amount,
+                    unit: i.unit,
+                })
+                .collect(),
+            steps: recipe.steps,
+        }
+    }
+}
+
+/// Statut HTTP d'un échec d'import : `502` quand la page distante est en cause,
+/// `422` quand c'est l'URL fournie (invalide, interdite, sans recette).
+fn scrape_status(error: &ScrapeError) -> StatusCode {
+    match error {
+        ScrapeError::Unreachable => StatusCode::BAD_GATEWAY,
+        _ => StatusCode::UNPROCESSABLE_ENTITY,
+    }
+}
+
+/// `POST /recipes/scrape` — extrait un brouillon de recette d'une URL (#61).
+///
+/// Le serveur va chercher l'URL : garde SSRF côté implémentation (https,
+/// IP publiques, sans redirection, taille bornée). Ne crée jamais la recette —
+/// il renvoie un brouillon que le front prérempli dans le formulaire.
+async fn scrape_recipe(
+    _user: AuthUser,
+    State(state): State<RecipeState>,
+    Json(body): Json<ScrapeBody>,
+) -> impl IntoResponse {
+    let response = ScrapeRecipeHandler::new(state.scraper.as_ref())
+        .handle(ScrapeRecipeCommand { url: body.url })
+        .await;
+    match response {
+        ScrapeRecipeResponse::Drafted(recipe) => {
+            (StatusCode::OK, Json(RecipeDraftView::from(recipe))).into_response()
+        }
+        ScrapeRecipeResponse::Rejected(error) => (
+            scrape_status(&error),
+            Json(ErrorBody {
+                error: error.to_string(),
+            }),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::InMemoryRecipes;
+
+    /// Scraper inerte pour construire un état de test.
+    struct NoopScraper;
+
+    #[async_trait::async_trait]
+    impl RecipeScraper for NoopScraper {
+        async fn scrape(&self, _url: &str) -> Result<ScrapedRecipe, ScrapeError> {
+            Err(ScrapeError::NoRecipe)
+        }
+    }
+
+    #[test]
+    fn router_mounts_without_route_conflict() {
+        // Construire le routeur suffit : Axum panique à l'insertion si
+        // `/recipes/scrape` entrait en conflit avec `/recipes/{id}`.
+        let state = RecipeState {
+            recipes: Arc::new(InMemoryRecipes::default()),
+            photos: None,
+            scraper: Arc::new(NoopScraper),
+        };
+        let _ = router(state);
     }
 }

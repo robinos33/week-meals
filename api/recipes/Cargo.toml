@@ -16,7 +16,12 @@ sqlx = { workspace = true }
 uuid = { workspace = true }
 axum = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 rust-s3 = { workspace = true }
+# Import d'une recette par URL (#61) : fetch gardé (SSRF) + parsing JSON-LD.
+tokio = { workspace = true }
+reqwest = { workspace = true }
+regex = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

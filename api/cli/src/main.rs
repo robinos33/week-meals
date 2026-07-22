@@ -7,7 +7,6 @@
 
 mod ingredient_yaml;
 mod recipe_yaml;
-mod scrape;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,8 +20,8 @@ use auth::infrastructure::{SqlxDeviceRepository, SqlxOnboardingRepository, SqlxU
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use kernel::{DeviceId, HouseholdId, RecipeId, UserId, DEMO_HOUSEHOLD_ID};
-use recipes::domain::RecipeRepository;
-use recipes::infrastructure::SqlxRecipeRepository;
+use recipes::domain::{RecipeRepository, RecipeScraper};
+use recipes::infrastructure::{HttpRecipeScraper, SqlxRecipeRepository};
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
@@ -128,9 +127,14 @@ async fn main() -> Result<()> {
     let _ = dotenvy::dotenv();
     let cli = Cli::parse();
 
-    // Le scraping ne touche pas la base : inutile d'exiger DATABASE_URL.
+    // Le scraping ne touche pas la base : inutile d'exiger DATABASE_URL. En CLI,
+    // c'est la machine de l'utilisateur qui fetch : scraper sans garde SSRF.
     if let Command::Scrape { url, out } = &cli.command {
-        let recipe = scrape::scrape(url).await?;
+        let scraped = HttpRecipeScraper::unrestricted()
+            .scrape(url)
+            .await
+            .with_context(|| format!("import de {url}"))?;
+        let recipe = RecipeYaml::from_scraped(scraped);
         let yaml = serde_yaml::to_string(&recipe).context("sérialisation YAML")?;
         match out {
             Some(path) => {
