@@ -32,3 +32,27 @@ jobs:
       # de service à provisionner ni de `--ignored` à passer.
       - name: Tests
         run: cargo test --workspace
+
+  deploy:
+    name: déploiement Fly.io
+    # Jamais sur une PR, et jamais sans les tests au vert : l'app n'a qu'une
+    # machine, un déploiement raté est une indisponibilité.
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    # Une machine, un volume : deux déploiements simultanés se marcheraient
+    # dessus. Les poussées rapprochées font la queue plutôt que d'être annulées
+    # — on veut que le dernier commit de `main` finisse en ligne.
+    concurrency:
+      group: deploy-fly
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # `--remote-only` : le build tourne sur les builders Fly, ce qui évite de
+      # reconstruire l'image Rust sur un runner GitHub sans cache de couches.
+      - name: Deploy
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

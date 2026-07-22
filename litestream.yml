@@ -1,0 +1,29 @@
+# Réplication continue de la base SQLite vers R2 (cf. ADR-0008).
+#
+# Un volume Fly vit sur un hôte précis : sans réplication, perdre l'hôte c'est
+# perdre la base entre deux snapshots quotidiens. Litestream expédie le WAL au
+# fil de l'eau vers le bucket R2 déjà provisionné pour les photos.
+#
+# Les valeurs viennent de l'environnement (`fly secrets set`) : rien de sensible
+# dans ce fichier, qui est versionné.
+#
+# Litestream n'expanse que `${VAR}` — pas de `${VAR:-défaut}`, qu'il laisserait
+# tel quel. `DB_PATH` est donc défini dans l'image (Dockerfile), pas ici.
+
+dbs:
+  - path: ${DB_PATH}
+    replicas:
+      - type: s3
+        # R2 n'est pas AWS : endpoint explicite, région factice, et adressage
+        # par chemin (pas de DNS par bucket).
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: auto
+        force-path-style: true
+        bucket: ${LITESTREAM_BUCKET}
+        path: weekmeals
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        # Un instantané par jour, gardé trois semaines : largement au-delà du
+        # délai où l'on s'aperçoit d'une bêtise, pour quelques Mo dans R2.
+        snapshot-interval: 24h
+        retention: 504h

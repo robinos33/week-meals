@@ -1,0 +1,54 @@
+# Déploiement Fly.io — une seule app sert l'API et le front (cf. ADR-0007).
+# Les valeurs sensibles ne sont PAS ici : elles passent par `fly secrets set`
+# (voir README, section « Déploiement »).
+
+app = "week-meals"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  # La base est un fichier sur le volume monté ci-dessous (cf. ADR-0008) : rien
+  # de secret, donc pas de `fly secrets` pour elle.
+  DATABASE_URL = "sqlite:///data/weekmeals.db"
+  # Cookie de session : HTTPS obligatoire (Fly force TLS ci-dessous). `Lax`
+  # suffit puisque front et API partagent l'origine — pas besoin de `None`.
+  SESSION_SECURE = "1"
+  SESSION_SAME_SITE = "lax"
+  # Fail-closed : seuls les appareils enrôlés par passkey entrent (ADR-0006).
+  AUTH_MODE = "locked"
+  RUST_LOG = "info"
+
+# Volume portant la base SQLite. À créer une fois, dans la région primaire :
+#   fly volumes create weekmeals_data --region cdg --size 1
+#
+# Un volume appartient à UNE machine : l'app ne doit jamais être scalée
+# au-delà de `count = 1`, sinon chaque machine aurait sa propre base et elles
+# divergeraient en silence (cf. ADR-0008). La durabilité ne repose pas sur ce
+# volume mais sur la réplication Litestream vers R2.
+[mounts]
+  source = "weekmeals_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Trafic d'un seul foyer : la machine s'arrête quand personne ne s'en sert et
+  # redémarre à la première requête (~1-2 s de cold start, assumé — ADR-0001).
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  # Une seule machine, parce qu'un seul volume (cf. [mounts]).
+  max_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

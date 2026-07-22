@@ -63,13 +63,13 @@ async fn passkey_enroll_and_login_ceremonies() {
     let router = app(pool.clone(), store, &config);
 
     // Verrouillé : pas de session ⇒ /auth/me → 401.
-    let me = router.clone().oneshot(get("/auth/me")).await.unwrap();
+    let me = router.clone().oneshot(get("/api/auth/me")).await.unwrap();
     assert_eq!(me.status(), StatusCode::UNAUTHORIZED);
 
     // Fenêtre fermée ⇒ status open:false.
     let status = router
         .clone()
-        .oneshot(get("/auth/enroll/status"))
+        .oneshot(get("/api/auth/enroll/status"))
         .await
         .unwrap();
     assert_eq!(status.status(), StatusCode::OK);
@@ -86,7 +86,7 @@ async fn passkey_enroll_and_login_ceremonies() {
     // Fenêtre ouverte ⇒ status open:true.
     let status = router
         .clone()
-        .oneshot(get("/auth/enroll/status"))
+        .oneshot(get("/api/auth/enroll/status"))
         .await
         .unwrap();
     assert_eq!(json_body(status).await["open"], serde_json::json!(true));
@@ -95,7 +95,7 @@ async fn passkey_enroll_and_login_ceremonies() {
     let bad = router
         .clone()
         .oneshot(post_json(
-            "/auth/enroll/start",
+            "/api/auth/enroll/start",
             serde_json::json!({ "code": "AAAA-BBBB", "label": "iPhone de test" }),
         ))
         .await
@@ -106,7 +106,7 @@ async fn passkey_enroll_and_login_ceremonies() {
     let ok = router
         .clone()
         .oneshot(post_json(
-            "/auth/enroll/start",
+            "/api/auth/enroll/start",
             serde_json::json!({ "code": code.formatted(), "label": "iPhone de test" }),
         ))
         .await
@@ -117,7 +117,7 @@ async fn passkey_enroll_and_login_ceremonies() {
     // La cérémonie d'authentification découvrable démarre sans identifiant.
     let login = router
         .clone()
-        .oneshot(post_json("/auth/login/start", serde_json::json!(null)))
+        .oneshot(post_json("/api/auth/login/start", serde_json::json!(null)))
         .await
         .unwrap();
     assert_eq!(login.status(), StatusCode::OK);
@@ -153,7 +153,7 @@ async fn pairing_code_attempts_are_capped() {
         let bad = router
             .clone()
             .oneshot(post_json(
-                "/auth/enroll/start",
+                "/api/auth/enroll/start",
                 serde_json::json!({ "code": "AAAA-BBBB", "label": "intrus" }),
             ))
             .await
@@ -168,7 +168,7 @@ async fn pairing_code_attempts_are_capped() {
     // La fenêtre est désormais close : elle ne s'annonce plus ouverte…
     let status = router
         .clone()
-        .oneshot(get("/auth/enroll/status"))
+        .oneshot(get("/api/auth/enroll/status"))
         .await
         .unwrap();
     assert_eq!(
@@ -181,7 +181,7 @@ async fn pairing_code_attempts_are_capped() {
     let with_good_code = router
         .clone()
         .oneshot(post_json(
-            "/auth/enroll/start",
+            "/api/auth/enroll/start",
             serde_json::json!({ "code": code.formatted(), "label": "iPhone de test" }),
         ))
         .await

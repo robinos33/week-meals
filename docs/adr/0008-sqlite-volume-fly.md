@@ -4,13 +4,14 @@
 - **Remplace** la partie « base de données » de
   [ADR-0001](0001-stack-rust-axum-scaleway.md) (PostgreSQL managé, Neon). Le
   reste — Rust/Axum, React/Vite, R2 pour les photos — est confirmé.
-- **Suppose** l'hébergement sur Fly.io, décidé séparément par l'ADR-0007 : le
-  volume dont il est question ici est un volume Fly.
+- **Suppose** l'hébergement sur Fly.io, décidé séparément par
+  [ADR-0007](0007-hebergement-fly-mono-app.md) : le volume dont il est question
+  ici est un volume Fly.
 
 ## Contexte
 
 Le déploiement rassemble le front et l'API dans un seul conteneur Fly
-(ADR-0007). Il restait un fournisseur extérieur pour la base : **Neon**. À
+([ADR-0007](0007-hebergement-fly-mono-app.md)). Il restait un fournisseur extérieur pour la base : **Neon**. À
 l'échelle du projet — un foyer, quelques centaines de recettes, un écrivain à la
 fois — ce Postgres managé coûte plus qu'il ne rapporte :
 

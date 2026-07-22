@@ -29,9 +29,9 @@ référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredien
 |---|---|
 | Backend | Rust — Axum + SQLx (clean architecture, crates par couche) |
 | Frontend | React + Vite + TypeScript, PWA (offline via IndexedDB) |
-| BDD | SQLite — un simple fichier, créé et migré au démarrage |
+| BDD | SQLite — un fichier, sur un volume Fly en prod (Litestream → R2) |
 | Photos | Cloudflare R2 (S3-compatible) |
-| Hébergement | Cloudflare Pages (front) + Scaleway Serverless Containers (API) |
+| Hébergement | Fly.io — une seule app : l'Axum sert l'API (`/api`) et le front |
 
 Le détail des choix et leurs alternatives : [docs/adr/](docs/adr/).
 
@@ -61,6 +61,10 @@ cargo run --manifest-path api/Cargo.toml -p server
 # 4. Front (Vite) — dans un autre terminal, sur :5173
 cd web && cp .env.example .env.local && npm install && npm run dev
 ```
+
+Les routes de l'API sont servies sous le préfixe **`/api`**
+(cf. [ADR-0007](docs/adr/0007-hebergement-fly-mono-app.md)) : `VITE_API_URL`
+doit donc l'inclure (`http://localhost:8080/api` en dev).
 
 Repartir de zéro tient en une commande — supprimer le fichier suffit :
 
@@ -121,7 +125,7 @@ relire** avant import. Les cuillères sont converties (soupe = 15 mL, café =
 Le même import est disponible dans l'app : le formulaire de création de recette
 a un champ **« Importer depuis une URL »** qui prérempli les champs (à corriger
 avant d'enregistrer). Exposé en API, c'est le serveur qui va chercher l'URL :
-`POST /recipes/scrape` est donc gardé contre le **SSRF** (https uniquement, IP
+`POST /api/recipes/scrape` est donc gardé contre le **SSRF** (https uniquement, IP
 publiques vérifiées et épinglées, redirections coupées, taille bornée).
 
 ### Authentification par passkeys (cf. [ADR-0006](docs/adr/0006-auth-passkeys-appareils-enroles.md))
@@ -146,9 +150,10 @@ Le mode est piloté par `AUTH_MODE` :
   production.** (L'ancien `AUTH_DISABLED=1` reste accepté et équivaut à
   `disabled`.)
 
-En mode `locked`, front et API doivent partager le même domaine parent
-(`WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN`). Avant tout déploiement, remplacer la
-valeur `change-me` de `SESSION_SECRET` dans `.env`.
+En mode `locked`, front et API doivent partager le même domaine
+(`WEBAUTHN_RP_ID` / `WEBAUTHN_RP_ORIGIN`) — ce que le déploiement mono-app
+garantit d'office. Avant tout déploiement, remplacer la valeur `change-me` de
+`SESSION_SECRET` (en prod : `fly secrets set`, jamais dans `fly.toml`).
 
 ### Workflow de migration
 
@@ -176,6 +181,143 @@ sqlite3 weekmeals.db '.tables'
 # Les UUID sont des blobs : les lire avec hex()
 sqlite3 weekmeals.db 'select hex(id), title from recipes'
 ```
+
+## Déploiement (Fly.io)
+
+Une **seule app** Fly sert l'API sous `/api` et le front en statique
+(cf. [ADR-0007](docs/adr/0007-hebergement-fly-mono-app.md)) : même origine, donc
+ni CORS ni cookie `SameSite=None`, et les passkeys fonctionnent directement sur
+le domaine `.fly.dev`. Les migrations sont jouées **au démarrage** du serveur —
+pas d'étape `sqlx-cli` à part.
+
+La base est un fichier SQLite sur un **volume Fly** monté en `/data`
+(cf. [ADR-0008](docs/adr/0008-sqlite-volume-fly.md)), répliqué en continu vers
+R2 par Litestream.
+
+### Première mise en ligne
+
+```sh
+fly auth login
+fly launch --no-deploy --copy-config   # reprend fly.toml sans l'écraser
+fly volumes create weekmeals_data --region cdg --size 1
+```
+
+> **Une seule machine.** Le volume appartient à une machine : en scaler une
+> seconde lui donnerait sa propre base, et les deux divergeraient en silence.
+> `max_machines_running = 1` le verrouille dans `fly.toml`.
+
+Provisionner un bucket **R2** (photos) et un second pour les sauvegardes, puis
+injecter les secrets — `fly.toml` ne contient que du non-sensible, et plus
+d'URL de base de données du tout :
+
+```sh
+fly secrets set \
+  SESSION_SECRET="$(openssl rand -base64 64)" \
+  WEB_ORIGIN='https://week-meals.fly.dev' \
+  WEBAUTHN_RP_ID='week-meals.fly.dev' \
+  WEBAUTHN_RP_ORIGIN='https://week-meals.fly.dev' \
+  R2_ENDPOINT='https://<account>.r2.cloudflarestorage.com' \
+  R2_REGION='auto' \
+  R2_BUCKET='week-meals-photos' \
+  R2_ACCESS_KEY_ID='…' \
+  R2_SECRET_ACCESS_KEY='…' \
+  R2_PUBLIC_BASE_URL='https://<domaine-public-du-bucket>' \
+  LITESTREAM_ENDPOINT='https://<account>.r2.cloudflarestorage.com' \
+  LITESTREAM_BUCKET='week-meals-backups' \
+  LITESTREAM_ACCESS_KEY_ID='…' \
+  LITESTREAM_SECRET_ACCESS_KEY='…'
+```
+
+> Sans `LITESTREAM_BUCKET`, l'app démarre quand même — **sans réplication**.
+> C'est pratique pour un dépannage, jamais pour un déploiement durable : le
+> volume seul n'est sauvegardé que par les snapshots quotidiens de Fly.
+
+```sh
+fly deploy
+```
+
+> `AUTH_MODE=locked` est fixé dans `fly.toml` : l'app est **fermée** tant
+> qu'aucun appareil n'est enrôlé. C'est voulu (fail-closed).
+
+### Enrôler le premier appareil
+
+L'app étant verrouillée, la fenêtre d'enrôlement s'ouvre depuis le conteneur —
+la CLI `weekmeals` est présente dans l'image :
+
+```sh
+fly ssh console -C "weekmeals device open-window --minutes 15"
+```
+
+Saisir le code d'appairage affiché dans l'écran de connexion, depuis l'appareil
+à enrôler. Ensuite : `weekmeals device list` / `revoke <id>` / `close-window`.
+
+### Seed du référentiel et des recettes
+
+```sh
+fly ssh console -C "weekmeals seed-ingredients"
+fly ssh console -C "weekmeals seed --dir /app/data/recipes"
+```
+
+### Déploiements suivants — automatiques
+
+Une fois la première mise en ligne faite, **tout merge sur `main` déploie**
+(job `deploy` de [`ci.yml`](.github/workflows/ci.yml)), à condition que fmt,
+clippy et les tests soient au vert. Le build tourne sur les builders Fly
+(`--remote-only`), pas sur le runner GitHub.
+
+Deux choses à provisionner une fois pour que ça marche :
+
+```sh
+fly tokens create deploy -x 8760h   # jeton de déploiement, valable un an
+```
+
+puis le coller dans les secrets du dépôt sous le nom **`FLY_API_TOKEN`**
+(Settings → Secrets and variables → Actions). Le job cible l'environnement
+GitHub `production` : le créer permet d'y exiger une approbation manuelle avant
+chaque déploiement, mais il fonctionne sans.
+
+Les déploiements ne se chevauchent jamais (`concurrency: deploy-fly`) — l'app
+n'a qu'une machine et un volume. Pour déployer à la main malgré tout :
+
+```sh
+fly deploy
+```
+
+### Vérifier en local avant de pousser
+
+L'image se construit et se teste sans Fly :
+
+```sh
+docker build -t week-meals .
+docker run --rm -p 8080:8080 \
+  -v week-meals-data:/data \
+  -e AUTH_MODE=disabled \
+  week-meals
+```
+
+### Sauvegarde et restauration
+
+Litestream réplique le WAL en continu ; l'état des sauvegardes se lit depuis le
+conteneur :
+
+```sh
+fly ssh console -C "litestream snapshots /data/weekmeals.db"
+```
+
+Restaurer écrase la base : arrêter l'app d'abord, et restaurer à côté pour
+vérifier avant de remplacer.
+
+```sh
+fly ssh console
+litestream restore -o /data/verif.db /data/weekmeals.db          # dernier état
+litestream restore -o /data/verif.db -timestamp 2026-07-20T10:00:00Z \
+    /data/weekmeals.db                                            # à une date
+sqlite3 /data/verif.db 'select count(*) from recipes'
+```
+
+> Une restauration jamais essayée n'est pas une sauvegarde. La commande
+> ci-dessus, dans un fichier à côté, ne casse rien : l'exécuter une fois après
+> la mise en ligne.
 
 ## Documentation
 
