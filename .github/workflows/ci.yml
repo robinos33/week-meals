@@ -10,7 +10,7 @@ env:
 
 jobs:
   check:
-    name: fmt · clippy · tests unitaires
+    name: fmt · clippy · tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,39 +27,8 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Tests unitaires
+      # Unitaires et intégration dans le même run : depuis l'ADR-0008 les tests
+      # d'intégration ouvrent chacun une base SQLite temporaire, il n'y a plus
+      # de service à provisionner ni de `--ignored` à passer.
+      - name: Tests
         run: cargo test --workspace
-
-  integration:
-    name: tests d'intégration (Postgres)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: api
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: weekmeals
-          POSTGRES_PASSWORD: weekmeals
-          POSTGRES_DB: weekmeals
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U weekmeals -d weekmeals"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DATABASE_URL: postgres://weekmeals:weekmeals@localhost:5432/weekmeals
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: api
-      # Les tests d'intégration sont marqués `#[ignore]` : ils appliquent
-      # eux-mêmes les migrations et seedent leurs données contre le Postgres
-      # de service ci-dessus.
-      - name: Tests d'intégration
-        run: cargo test --workspace -- --ignored

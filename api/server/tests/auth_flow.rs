@@ -1,13 +1,9 @@
-//! Test d'intégration du flux d'authentification par passkeys contre un
-//! **Postgres réel** (cf. ADR-0006).
-//!
-//! Marqué `#[ignore]` : nécessite une base accessible via `DATABASE_URL`
-//! (par défaut celle du `docker-compose`). Lancer :
+//! Test d'intégration du flux d'authentification par passkeys (cf. ADR-0006),
+//! contre une **vraie base** — un fichier SQLite jetable, rien à provisionner
+//! (cf. ADR-0008) :
 //!
 //! ```sh
-//! docker compose up -d
-//! DATABASE_URL=postgres://weekmeals:weekmeals@localhost:5432/weekmeals \
-//!     cargo test -p server --test auth_flow -- --ignored
+//! cargo test -p server --test auth_flow
 //! ```
 //!
 //! Les cérémonies WebAuthn exigent un authentificateur (Face ID, clé matérielle
@@ -26,13 +22,10 @@ use axum::http::{Request, StatusCode};
 use chrono::{Duration, Utc};
 use http_body_util::BodyExt;
 use kernel::{HouseholdId, DEMO_HOUSEHOLD_ID};
-use server::{app, init_session_store, pool, Config};
+use server::{app, init_session_store, Config};
 use tower::ServiceExt;
 
-fn database_url() -> String {
-    std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://weekmeals:weekmeals@localhost:5432/weekmeals".to_owned())
-}
+mod common;
 
 fn get(uri: &str) -> Request<Body> {
     Request::builder().uri(uri).body(Body::empty()).unwrap()
@@ -53,20 +46,17 @@ async fn json_body(response: axum::response::Response) -> serde_json::Value {
 }
 
 #[tokio::test]
-#[ignore = "nécessite un Postgres (DATABASE_URL) — voir docstring"]
 async fn passkey_enroll_and_login_ceremonies() {
-    let pool = pool(&database_url()).unwrap();
-    sqlx::migrate!("../migrations")
-        .run(&pool)
-        .await
-        .expect("migrations socle");
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
     let store = init_session_store(&pool).await.expect("store de sessions");
     // Force le mode verrouillé quelle que soit la config d'environnement de CI.
     std::env::set_var("AUTH_MODE", "locked");
     let config = Config::from_env();
     let household = HouseholdId::from(DEMO_HOUSEHOLD_ID);
 
-    // On part fenêtre fermée.
+    // On part fenêtre fermée (base neuve : c'est déjà le cas, mais l'appel
+    // rend l'état de départ explicite).
     let onboarding = SqlxOnboardingRepository::new(pool.clone());
     onboarding.close(household).await.unwrap();
 
@@ -140,13 +130,9 @@ async fn passkey_enroll_and_login_ceremonies() {
 /// d'appairage : cinq échecs referment la fenêtre, et le **bon** code cesse
 /// alors d'être accepté.
 #[tokio::test]
-#[ignore = "nécessite un Postgres (DATABASE_URL) — voir docstring"]
 async fn pairing_code_attempts_are_capped() {
-    let pool = pool(&database_url()).unwrap();
-    sqlx::migrate!("../migrations")
-        .run(&pool)
-        .await
-        .expect("migrations socle");
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
     let store = init_session_store(&pool).await.expect("store de sessions");
     std::env::set_var("AUTH_MODE", "locked");
     let config = Config::from_env();

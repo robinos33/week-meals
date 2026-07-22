@@ -11,7 +11,7 @@
 
 use chrono::NaiveDate;
 use kernel::{HouseholdId, Quantity, RepositoryError, ShoppingItemId, Unit};
-use sqlx::{PgPool, Row};
+use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::domain::{
@@ -49,13 +49,13 @@ fn quantity(amount: f64, unit: &str) -> Result<Quantity, RepositoryError> {
 
 /// Implémentation SQLx du [`ShoppingListRepository`].
 pub struct SqlxShoppingListRepository {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl SqlxShoppingListRepository {
     /// Construit le repository sur un pool partagé.
     #[must_use]
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -65,7 +65,7 @@ const ITEM_COLUMNS: &str = "id, name, amount, unit, category, checked, generated
 
 /// Reconstruit une ligne depuis un enregistrement.
 fn item_from_row(
-    row: &sqlx::postgres::PgRow,
+    row: &sqlx::sqlite::SqliteRow,
     household_id: HouseholdId,
 ) -> Result<ShoppingItem, RepositoryError> {
     let id: Uuid = row.try_get("id").map_err(backend)?;
@@ -90,7 +90,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         // `created_at` départage d'éventuelles positions égales.
         let rows = sqlx::query(&format!(
             "select {ITEM_COLUMNS} from shopping_list_items \
-             where household_id = $1 \
+             where household_id = ? \
              order by position, created_at"
         ))
         .bind(household_id.as_uuid())
@@ -109,7 +109,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         id: ShoppingItemId,
     ) -> Result<Option<ShoppingItem>, RepositoryError> {
         let row = sqlx::query(&format!(
-            "select {ITEM_COLUMNS} from shopping_list_items where id = $1 and household_id = $2"
+            "select {ITEM_COLUMNS} from shopping_list_items where id = ? and household_id = ?"
         ))
         .bind(id.as_uuid())
         .bind(household_id.as_uuid())
@@ -129,7 +129,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         // régénérée.
         let mut tx = self.pool.begin().await.map_err(backend)?;
 
-        sqlx::query("delete from shopping_list_items where household_id = $1 and generated")
+        sqlx::query("delete from shopping_list_items where household_id = ? and generated = 1")
             .bind(household_id.as_uuid())
             .execute(&mut *tx)
             .await
@@ -140,10 +140,10 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         // collision (leur ordre relatif est préservé).
         let shift = i32::try_from(items.len()).unwrap_or(i32::MAX);
         sqlx::query(
-            "update shopping_list_items set position = position + $2 where household_id = $1",
+            "update shopping_list_items set position = position + ? where household_id = ?",
         )
-        .bind(household_id.as_uuid())
         .bind(shift)
+        .bind(household_id.as_uuid())
         .execute(&mut *tx)
         .await
         .map_err(backend)?;
@@ -153,7 +153,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
             sqlx::query(
                 "insert into shopping_list_items \
                  (id, household_id, name, amount, unit, category, checked, generated, position) \
-                 values ($1, $2, $3, $4, $5, $6, $7, true, $8)",
+                 values (?, ?, ?, ?, ?, ?, ?, 1, ?)",
             )
             .bind(item.id.as_uuid())
             .bind(household_id.as_uuid())
@@ -176,8 +176,8 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         sqlx::query(
             "insert into shopping_list_items \
              (id, household_id, name, amount, unit, category, checked, generated, position) \
-             values ($1, $2, $3, $4, $5, $6, $7, $8, \
-               coalesce((select max(position) + 1 from shopping_list_items where household_id = $2), 0))",
+             values (?, ?, ?, ?, ?, ?, ?, ?, \
+               coalesce((select max(position) + 1 from shopping_list_items where household_id = ?), 0))",
         )
         .bind(item.id.as_uuid())
         .bind(item.household_id.as_uuid())
@@ -187,6 +187,9 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         .bind(item.category.as_deref())
         .bind(item.checked)
         .bind(item.generated)
+        // Le foyer est lié une seconde fois : les `?` de SQLite sont
+        // positionnels, un même paramètre ne se réutilise pas comme `$2`.
+        .bind(item.household_id.as_uuid())
         .execute(&self.pool)
         .await
         .map_err(backend)?;
@@ -203,11 +206,11 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         let mut tx = self.pool.begin().await.map_err(backend)?;
         for (index, id) in ordered_ids.iter().enumerate() {
             sqlx::query(
-                "update shopping_list_items set position = $3 where id = $1 and household_id = $2",
+                "update shopping_list_items set position = ? where id = ? and household_id = ?",
             )
+            .bind(i32::try_from(index).unwrap_or(i32::MAX))
             .bind(id.as_uuid())
             .bind(household_id.as_uuid())
-            .bind(i32::try_from(index).unwrap_or(i32::MAX))
             .execute(&mut *tx)
             .await
             .map_err(backend)?;
@@ -218,16 +221,16 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
     async fn update(&self, item: &ShoppingItem) -> Result<(), RepositoryError> {
         let result = sqlx::query(
             "update shopping_list_items \
-             set name = $3, amount = $4, unit = $5, category = $6, checked = $7 \
-             where id = $1 and household_id = $2",
+             set name = ?, amount = ?, unit = ?, category = ?, checked = ? \
+             where id = ? and household_id = ?",
         )
-        .bind(item.id.as_uuid())
-        .bind(item.household_id.as_uuid())
         .bind(&item.name)
         .bind(item.quantity.amount())
         .bind(item.quantity.unit().as_str())
         .bind(item.category.as_deref())
         .bind(item.checked)
+        .bind(item.id.as_uuid())
+        .bind(item.household_id.as_uuid())
         .execute(&self.pool)
         .await
         .map_err(backend)?;
@@ -245,7 +248,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
         id: ShoppingItemId,
     ) -> Result<(), RepositoryError> {
         let result =
-            sqlx::query("delete from shopping_list_items where id = $1 and household_id = $2")
+            sqlx::query("delete from shopping_list_items where id = ? and household_id = ?")
                 .bind(id.as_uuid())
                 .bind(household_id.as_uuid())
                 .execute(&self.pool)
@@ -261,7 +264,7 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
 
     async fn clear_checked(&self, household_id: HouseholdId) -> Result<u64, RepositoryError> {
         let result =
-            sqlx::query("delete from shopping_list_items where household_id = $1 and checked")
+            sqlx::query("delete from shopping_list_items where household_id = ? and checked = 1")
                 .bind(household_id.as_uuid())
                 .execute(&self.pool)
                 .await
@@ -274,13 +277,13 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
 
 /// Implémentation SQLx du [`ReferenceRepository`].
 pub struct SqlxReferenceRepository {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl SqlxReferenceRepository {
     /// Construit le repository sur un pool partagé.
     #[must_use]
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
@@ -301,12 +304,12 @@ impl SqlxReferenceRepository {
         for reference in references {
             sqlx::query(
                 "insert into ingredient_reference (name, category, avg_weight_g, countable) \
-                 values ($1, $2, $3, $4) \
+                 values (?, ?, ?, ?) \
                  on conflict (name) do update set \
                    category = excluded.category, \
                    avg_weight_g = excluded.avg_weight_g, \
                    countable = excluded.countable, \
-                   updated_at = now()",
+                   updated_at = datetime('now')",
             )
             .bind(crate::domain::reference::normalize_name(&reference.name))
             .bind(&reference.category)
@@ -362,13 +365,13 @@ impl ReferenceRepository for SqlxReferenceRepository {
 /// planifiée). Le domaine, lui, ne voit que le port
 /// [`PlannedIngredientsSource`].
 pub struct SqlxPlannedIngredients {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl SqlxPlannedIngredients {
     /// Construit la projection sur un pool partagé.
     #[must_use]
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -387,7 +390,7 @@ impl PlannedIngredientsSource for SqlxPlannedIngredients {
             "select ri.name, ri.quantity, ri.unit \
              from meal_plan mp \
              join recipe_ingredients ri on ri.recipe_id = mp.recipe_id \
-             where mp.household_id = $1 and mp.meal_date between $2 and $3 \
+             where mp.household_id = ? and mp.meal_date between ? and ? \
              order by mp.meal_date, mp.slot, ri.position",
         )
         .bind(household_id.as_uuid())
@@ -414,13 +417,13 @@ impl PlannedIngredientsSource for SqlxPlannedIngredients {
 /// `recipes`. Comme [`SqlxPlannedIngredients`], il croise volontairement
 /// d'autres domaines, confiné à l'infrastructure.
 pub struct SqlxCookedCounter {
-    pool: PgPool,
+    pool: SqlitePool,
 }
 
 impl SqlxCookedCounter {
     /// Construit le compteur sur un pool partagé.
     #[must_use]
-    pub fn new(pool: PgPool) -> Self {
+    pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 }
@@ -433,31 +436,55 @@ impl CookedCountRecorder for SqlxCookedCounter {
         from: NaiveDate,
         to: NaiveDate,
     ) -> Result<(), RepositoryError> {
-        // Un seul énoncé, donc atomique : la CTE modificatrice marque les
-        // créneaux encore vierges (`counted_at is null`) de la plage, compte
-        // combien de fois chaque recette y apparaît, et incrémente son compteur
-        // d'autant. `last_cooked_at` départage le podium à égalité.
+        // SQLite n'autorise pas d'`update` dans un `with` : là où Postgres
+        // tenait en un seul énoncé (CTE modificatrice), il en faut deux, dans
+        // une transaction pour rester atomique.
+        //
+        // L'ordre porte la correction : on incrémente **d'abord** les
+        // compteurs, tant que les créneaux à compter sont encore reconnaissables
+        // à leur `counted_at is null` ; on les marque ensuite. L'inverse
+        // n'incrémenterait plus rien.
+        let mut tx = self.pool.begin().await.map_err(backend)?;
+
+        // Chaque recette du foyer gagne autant que de créneaux vierges où elle
+        // apparaît dans la plage — posée sur deux créneaux, elle compte deux
+        // fois. `last_cooked_at` départage le podium à égalité.
         sqlx::query(
-            "with newly as ( \
-                 update meal_plan \
-                 set counted_at = now() \
-                 where household_id = $1 and meal_date between $2 and $3 \
-                   and counted_at is null \
-                 returning recipe_id \
-             ), tally as ( \
-                 select recipe_id, count(*)::int as n from newly group by recipe_id \
-             ) \
-             update recipes r \
-             set cooked_count = r.cooked_count + t.n, last_cooked_at = now() \
-             from tally t \
-             where r.id = t.recipe_id and r.household_id = $1",
+            "update recipes set \
+                 cooked_count = cooked_count + ( \
+                     select count(*) from meal_plan mp \
+                     where mp.recipe_id = recipes.id and mp.household_id = ? \
+                       and mp.meal_date between ? and ? and mp.counted_at is null \
+                 ), \
+                 last_cooked_at = datetime('now') \
+             where household_id = ? and exists ( \
+                 select 1 from meal_plan mp \
+                 where mp.recipe_id = recipes.id and mp.household_id = ? \
+                   and mp.meal_date between ? and ? and mp.counted_at is null \
+             )",
         )
         .bind(household_id.as_uuid())
         .bind(from)
         .bind(to)
-        .execute(&self.pool)
+        .bind(household_id.as_uuid())
+        .bind(household_id.as_uuid())
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
         .await
         .map_err(backend)?;
-        Ok(())
+
+        sqlx::query(
+            "update meal_plan set counted_at = datetime('now') \
+             where household_id = ? and meal_date between ? and ? and counted_at is null",
+        )
+        .bind(household_id.as_uuid())
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
+
+        tx.commit().await.map_err(backend)
     }
 }

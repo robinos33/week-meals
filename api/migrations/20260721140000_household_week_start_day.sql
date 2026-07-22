@@ -4,5 +4,5 @@
 -- samedi. Défaut 1 = lundi (comportement historique). Notre foyer fait les
 -- courses le samedi (valeur 6), d'où le besoin de le rendre configurable.
 alter table households
-    add column week_start_day smallint not null default 1
+    add column week_start_day integer not null default 1
         check (week_start_day between 0 and 6);

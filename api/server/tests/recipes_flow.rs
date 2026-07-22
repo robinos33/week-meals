@@ -1,30 +1,25 @@
-//! Test d'intégration du CRUD recettes contre un **Postgres réel** (via l'API
-//! HTTP complète). Marqué `#[ignore]` — nécessite `DATABASE_URL`. Lancer :
+//! Test d'intégration du CRUD recettes contre une **vraie base** (via l'API
+//! HTTP complète), sur un fichier SQLite jetable — rien à provisionner, le test
+//! tourne partout (cf. ADR-0008) :
 //!
 //! ```sh
-//! docker compose up -d
-//! DATABASE_URL=postgres://weekmeals:weekmeals@localhost:5432/weekmeals \
-//!     cargo test -p server --test recipes_flow -- --ignored
+//! cargo test -p server --test recipes_flow
 //! ```
 //!
 //! L'authentification par passkeys (ADR-0006) n'est pas rejouable sans
 //! authentificateur : ce test s'exécute donc en **mode public** (`AUTH_MODE=
 //! disabled`), où les requêtes sont scopées au foyer de démo sans session. Le
-//! verrouillage lui-même est couvert par `auth_flow`. Un marqueur unique par
-//! exécution garde le test isolé malgré le foyer partagé.
+//! verrouillage lui-même est couvert par `auth_flow`.
 
 use axum::body::Body;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use serde_json::Value;
-use server::{app, init_session_store, pool, Config};
+use server::{app, init_session_store, Config};
 use tower::ServiceExt;
 
-fn database_url() -> String {
-    std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://weekmeals:weekmeals@localhost:5432/weekmeals".to_owned())
-}
+mod common;
 
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
@@ -32,20 +27,15 @@ async fn json_body(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
-#[ignore = "nécessite un Postgres (DATABASE_URL) — voir docstring"]
 async fn recipe_crud_flow() {
-    let pool = pool(&database_url()).unwrap();
-    sqlx::migrate!("../migrations")
-        .run(&pool)
-        .await
-        .expect("migrations");
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
     let store = init_session_store(&pool).await.expect("store de sessions");
     // Mode public : l'extractor scope au foyer de démo sans session.
     std::env::set_var("AUTH_MODE", "disabled");
     let config = Config::from_env();
     let router = app(pool, store, &config);
 
-    // Marqueur unique : le foyer de démo est partagé entre exécutions.
     let marker = uuid::Uuid::new_v4().simple().to_string();
     let title = format!("Ratatouille {marker}");
 

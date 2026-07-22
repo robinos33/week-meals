@@ -42,10 +42,12 @@ uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
 thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
+# SQLite embarqué (cf. ADR-0008) : `sqlite` embarque libsqlite3 dans le binaire,
+# le conteneur d'exécution n'a donc aucune bibliothèque à installer. Pas de
+# feature TLS : la seule base est un fichier local.
 sqlx = { version = "0.8", default-features = false, features = [
     "runtime-tokio",
-    "tls-rustls",
-    "postgres",
+    "sqlite",
     "uuid",
     "chrono",
     "macros",
@@ -62,6 +64,9 @@ reqwest = { version = "0.12", default-features = false, features = [
     "charset",
 ] }
 regex = "1"
+# Dépliage des accents pour la clé de recherche/tri des recettes : SQLite ne
+# sait ni comparer ni trier hors ASCII (cf. ADR-0008).
+unicode-normalization = "0.1"
 rust-s3 = { version = "0.35", default-features = false, features = [
     "tokio-rustls-tls",
 ] }

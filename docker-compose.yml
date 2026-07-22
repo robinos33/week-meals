@@ -1,26 +1,11 @@
-# Environnement de dev local — PostgreSQL.
+# Environnement de dev local — stockage des photos uniquement.
 # Copier .env.example vers .env puis : docker compose up -d
-# La base est ensuite migrée avec sqlx-cli (voir README « Dev local / self-host »).
+#
+# Il n'y a plus de service de base de données : depuis l'ADR-0008 c'est un
+# fichier SQLite (`api/weekmeals.db` par défaut), créé et migré au démarrage du
+# serveur. Rien à provisionner, rien à lancer.
 
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: week-meals-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-weekmeals}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-weekmeals}
-      POSTGRES_DB: ${POSTGRES_DB:-weekmeals}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-weekmeals} -d ${POSTGRES_DB:-weekmeals}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   # Stockage S3-compatible pour les photos, en dev (tient lieu de Cloudflare R2).
   minio:
     image: minio/minio
@@ -55,5 +40,4 @@ services:
     restart: "no"
 
 volumes:
-  db_data:
   minio_data:
