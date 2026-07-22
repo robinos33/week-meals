@@ -1,8 +1,10 @@
 # ADR-0001 — Stack : Rust/Axum + React, hébergement 0 €
 
 - **Statut :** acceptée (2026-07-11), **partiellement remplacée** (2026-07-22)
-  par [ADR-0008](0008-sqlite-volume-fly.md) : la base passe de Neon à SQLite.
-  Le reste (Rust/Axum, React/Vite, R2) reste en vigueur.
+  par [ADR-0007](0007-hebergement-fly-mono-app.md) — l'hébergement passe de
+  Scaleway + Cloudflare Pages à une app Fly.io unique — et par
+  [ADR-0008](0008-sqlite-volume-fly.md) — la base passe de Neon à SQLite sur
+  volume Fly. Le reste (Rust/Axum, React/Vite, R2) reste en vigueur.
 
 ## Contexte
 

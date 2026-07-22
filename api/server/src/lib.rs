@@ -1,8 +1,13 @@
 //! Crate `server` — couche HTTP (Axum) et composition de l'application.
 //!
-//! Le binaire monte ici les sous-routers exposés par chaque domaine, derrière
-//! une couche de sessions cookie (`tower-sessions`, store SQLite) et une
-//! couche CORS pour le front (origine distincte en dev : Vite ↔ Axum).
+//! Le binaire monte ici les sous-routers exposés par chaque domaine sous le
+//! préfixe `/api`, derrière une couche de sessions cookie (`tower-sessions`,
+//! store SQLite) et une couche CORS.
+//!
+//! Le préfixe `/api` n'est pas cosmétique : en prod le même processus sert
+//! aussi le build du front (cf. ADR-0007), et plusieurs routes se
+//! chevauchaient à la racine (`/recipes` côté SPA comme côté API). Tout ce qui
+//! n'est ni `/health` ni `/api/**` retombe donc sur les fichiers statiques.
 //!
 //! [`app`] construit le routeur à partir d'un `SqlitePool` afin que les tests
 //! d'intégration puissent l'assembler sans ouvrir de socket (pool paresseux).
@@ -15,6 +20,7 @@ use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
+use tower_http::services::{ServeDir, ServeFile};
 use tower_sessions::cookie::time::Duration;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{Expiry, SessionManagerLayer};
@@ -57,6 +63,9 @@ pub struct Config {
     pub rp_id: String,
     /// Origine WebAuthn : l'URL complète du front (schéma + domaine + port).
     pub rp_origin: String,
+    /// Dossier du build front à servir en statique (`WEB_DIST`). `None` en dev,
+    /// où Vite s'en charge ; renseigné dans l'image Docker (cf. ADR-0007).
+    pub web_dist: Option<String>,
 }
 
 impl Config {
@@ -91,6 +100,7 @@ impl Config {
             .ok()
             .or_else(|| host_of(&rp_origin))
             .unwrap_or_else(|| "localhost".to_owned());
+        let web_dist = std::env::var("WEB_DIST").ok().filter(|v| !v.is_empty());
         Self {
             web_origin,
             secure_cookie,
@@ -98,15 +108,16 @@ impl Config {
             auth_mode,
             rp_id,
             rp_origin,
+            web_dist,
         }
     }
 }
 
 /// Migrations applicatives embarquées dans le binaire (`api/migrations`).
 ///
-/// Jouées au démarrage plutôt que par une étape `sqlx-cli` séparée : la base
-/// étant un simple fichier (cf. ADR-0008), il n'y a rien à provisionner avant
-/// de lancer le serveur — et un seul migrateur à la fois, par construction.
+/// Jouées au démarrage : le déploiement mono-conteneur n'a pas d'étape
+/// `sqlx-cli` séparée. La base étant un fichier attaché à une machine unique
+/// (cf. ADR-0008), il n'y a par construction qu'un seul migrateur à la fois.
 ///
 /// # Errors
 /// Remonte l'erreur SQLx si une migration échoue ou si l'historique diverge.
@@ -218,14 +229,30 @@ pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Rou
         cooked: Arc::new(SqlxCookedCounter::new(pool.clone())),
     };
 
-    Router::new()
-        .route("/health", get(health))
+    // Les couches session/CORS ne portent que sur l'API : inutile d'ouvrir une
+    // session pour servir un `.woff2`.
+    let api = Router::new()
         .merge(presentation::router(auth_state))
         .merge(recipes::presentation::router(recipe_state))
         .merge(meal_plan::presentation::router(meal_plan_state))
         .merge(shopping_list::presentation::router(shopping_list_state))
         .layer(session_layer)
-        .layer(cors)
+        .layer(cors);
+
+    let router = Router::new()
+        .route("/health", get(health))
+        .nest("/api", api);
+
+    match &config.web_dist {
+        // Déploiement mono-app : tout le reste est le SPA. Les chemins inconnus
+        // retombent sur `index.html` pour laisser le routeur client décider
+        // (rechargement direct sur `/recipes/<id>`, par exemple).
+        Some(dist) => router.fallback_service(
+            ServeDir::new(dist).fallback(ServeFile::new(format!("{dist}/index.html"))),
+        ),
+        // Dev : le front est servi par Vite, l'API ne sert qu'elle-même.
+        None => router,
+    }
 }
 
 /// Construit le stockage photo (R2/MinIO) depuis l'environnement, ou `None` si

@@ -49,7 +49,7 @@ async fn create_recipe(router: &Router, title: &str) -> String {
     });
     let response = router
         .clone()
-        .oneshot(json_request("POST", "/recipes", &body))
+        .oneshot(json_request("POST", "/api/recipes", &body))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -62,7 +62,7 @@ async fn plan(router: &Router, date: &str, slot: &str, recipe_id: &str) {
         .clone()
         .oneshot(json_request(
             "PUT",
-            &format!("/meal-plan/{date}/{slot}"),
+            &format!("/api/meal-plan/{date}/{slot}"),
             &serde_json::json!({ "recipe_id": recipe_id }),
         ))
         .await
@@ -76,7 +76,7 @@ async fn generate(router: &Router, from: &str, to: &str) -> Value {
         .clone()
         .oneshot(json_request(
             "POST",
-            "/shopping-list/generate",
+            "/api/shopping-list/generate",
             &serde_json::json!({ "from": from, "to": to }),
         ))
         .await
@@ -91,7 +91,7 @@ async fn cooked_count(router: &Router, recipe_id: &str) -> u64 {
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!("/recipes/{recipe_id}"))
+                .uri(format!("/api/recipes/{recipe_id}"))
                 .body(Body::empty())
                 .unwrap(),
         )

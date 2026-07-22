@@ -1,0 +1,32 @@
+# Ce qui n'a rien à faire dans le contexte de build (cf. Dockerfile).
+.git/
+.github/
+.claude/
+
+# Artefacts de build — reconstruits dans l'image, et `api/target` pèse des Go.
+api/target/
+web/node_modules/
+web/dist/
+**/*.tsbuildinfo
+
+# Base SQLite de dev : le conteneur a la sienne, sur son volume.
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets et config locale : l'environnement est injecté par Fly (secrets).
+.env
+.env.local
+web/.env
+web/.env.local
+
+# Documentation et outillage : sans effet sur le binaire ou le bundle.
+docs/
+README.md
+LICENSE
+docker-compose.yml
+fly.toml
+
+.DS_Store
+.idea/
+.vscode/

@@ -104,14 +104,16 @@ mutations rejouée au retour du réseau. Conflits en *last-write-wins* (suffisan
 |---|---|---|
 | Backend | Rust — Axum + SQLx + Tokio | `webauthn-rs`, sessions cookie (`tower-sessions`) |
 | Frontend | React + Vite + TS | TanStack Query/Router, `vite-plugin-pwa`, Dexie |
-| BDD | SQLite — un simple fichier | Créée et migrée au démarrage — [ADR-0008](adr/0008-sqlite-volume-fly.md) |
+| BDD | SQLite — un fichier sur volume Fly | Répliqué vers R2 (Litestream) — [ADR-0008](adr/0008-sqlite-volume-fly.md) |
 | Photos | Cloudflare R2 (10 Go gratuits) | Upload via URL présignée |
 | Front hosting | Cloudflare Pages | |
 | API hosting | Scaleway Serverless Containers | Scale-to-zero, cold start ~1-2 s acceptable |
 | CI/CD | GitHub Actions | fmt + clippy + tests + deploy ; purge des vieilles images du registry |
 
-Détail et alternatives : [ADR-0001](adr/0001-stack-rust-axum-scaleway.md),
-amendé sur la base de données par [ADR-0008](adr/0008-sqlite-volume-fly.md).
+Détail et alternatives : [ADR-0001](adr/0001-stack-rust-axum-scaleway.md), amendé
+depuis sur l'hébergement par [ADR-0007](adr/0007-hebergement-fly-mono-app.md)
+(une seule app Fly, front et API) et sur la base par
+[ADR-0008](adr/0008-sqlite-volume-fly.md).
 
 ## Qualité
 

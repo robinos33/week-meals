@@ -52,7 +52,7 @@ async fn recipe_crud_flow() {
     });
     let created = router
         .clone()
-        .oneshot(json_request("POST", "/recipes", &create_body))
+        .oneshot(json_request("POST", "/api/recipes", &create_body))
         .await
         .unwrap();
     assert_eq!(created.status(), StatusCode::CREATED);
@@ -63,7 +63,7 @@ async fn recipe_crud_flow() {
     // Recherche par le marqueur unique.
     let found = router
         .clone()
-        .oneshot(get(&format!("/recipes?search={marker}")))
+        .oneshot(get(&format!("/api/recipes?search={marker}")))
         .await
         .unwrap();
     assert_eq!(found.status(), StatusCode::OK);
@@ -73,7 +73,7 @@ async fn recipe_crud_flow() {
     // Détail.
     let detail = router
         .clone()
-        .oneshot(get(&format!("/recipes/{id}")))
+        .oneshot(get(&format!("/api/recipes/{id}")))
         .await
         .unwrap();
     assert_eq!(detail.status(), StatusCode::OK);
@@ -86,7 +86,11 @@ async fn recipe_crud_flow() {
     });
     let updated = router
         .clone()
-        .oneshot(json_request("PUT", &format!("/recipes/{id}"), &update_body))
+        .oneshot(json_request(
+            "PUT",
+            &format!("/api/recipes/{id}"),
+            &update_body,
+        ))
         .await
         .unwrap();
     assert_eq!(updated.status(), StatusCode::OK);
@@ -100,7 +104,7 @@ async fn recipe_crud_flow() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!("/recipes/{id}"))
+                .uri(format!("/api/recipes/{id}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -110,7 +114,7 @@ async fn recipe_crud_flow() {
 
     let gone = router
         .clone()
-        .oneshot(get(&format!("/recipes/{id}")))
+        .oneshot(get(&format!("/api/recipes/{id}")))
         .await
         .unwrap();
     assert_eq!(gone.status(), StatusCode::NOT_FOUND);
@@ -121,7 +125,7 @@ async fn recipe_crud_flow() {
         .clone()
         .oneshot(json_request(
             "POST",
-            "/recipes/scrape",
+            "/api/recipes/scrape",
             &serde_json::json!({ "url": "http://example.com/rata" }),
         ))
         .await
@@ -131,7 +135,7 @@ async fn recipe_crud_flow() {
     let loopback = router
         .oneshot(json_request(
             "POST",
-            "/recipes/scrape",
+            "/api/recipes/scrape",
             &serde_json::json!({ "url": "https://127.0.0.1/rata" }),
         ))
         .await

@@ -42,7 +42,7 @@ async fn create_recipe(router: &Router, title: &str) -> String {
     });
     let response = router
         .clone()
-        .oneshot(json_request("POST", "/recipes", &body))
+        .oneshot(json_request("POST", "/api/recipes", &body))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
@@ -92,7 +92,7 @@ async fn meal_plan_flow() {
         .clone()
         .oneshot(json_request(
             "PUT",
-            "/meal-plan/2026-07-13/dinner",
+            "/api/meal-plan/2026-07-13/dinner",
             &serde_json::json!({ "recipe_id": recipe_id }),
         ))
         .await
@@ -111,7 +111,7 @@ async fn meal_plan_flow() {
         .clone()
         .oneshot(json_request(
             "PUT",
-            "/meal-plan/2026-07-13/dinner",
+            "/api/meal-plan/2026-07-13/dinner",
             &serde_json::json!({ "recipe_id": other_id }),
         ))
         .await
@@ -127,7 +127,7 @@ async fn meal_plan_flow() {
         .clone()
         .oneshot(json_request(
             "PUT",
-            "/meal-plan/2026-07-14/lunch",
+            "/api/meal-plan/2026-07-14/lunch",
             &serde_json::json!({ "recipe_id": foreign_recipe }),
         ))
         .await
@@ -137,7 +137,7 @@ async fn meal_plan_flow() {
     // Une plage démesurée est refusée plutôt que de tout ramener.
     let too_wide = router
         .clone()
-        .oneshot(get("/meal-plan?from=2026-01-01&to=9999-12-31"))
+        .oneshot(get("/api/meal-plan?from=2026-01-01&to=9999-12-31"))
         .await
         .unwrap();
     assert_eq!(too_wide.status(), StatusCode::UNPROCESSABLE_ENTITY);
@@ -148,7 +148,7 @@ async fn meal_plan_flow() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/meal-plan/2026-07-13/dinner")
+                .uri("/api/meal-plan/2026-07-13/dinner")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -160,7 +160,7 @@ async fn meal_plan_flow() {
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri("/meal-plan/2026-07-13/dinner")
+                .uri("/api/meal-plan/2026-07-13/dinner")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -173,7 +173,7 @@ async fn meal_plan_flow() {
 async fn get_week(router: &Router, from: &str, to: &str) -> Value {
     let response = router
         .clone()
-        .oneshot(get(&format!("/meal-plan?from={from}&to={to}")))
+        .oneshot(get(&format!("/api/meal-plan?from={from}&to={to}")))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
