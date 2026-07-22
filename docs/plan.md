@@ -108,7 +108,7 @@ mutations rejouée au retour du réseau. Conflits en *last-write-wins* (suffisan
 | Photos | Cloudflare R2 (10 Go gratuits) | Upload via URL présignée |
 | Front hosting | Cloudflare Pages | |
 | API hosting | Scaleway Serverless Containers | Scale-to-zero, cold start ~1-2 s acceptable |
-| CI/CD | GitHub Actions | fmt + clippy + tests + deploy ; purge des vieilles images du registry |
+| CI/CD | GitHub Actions | fmt + clippy + tests ; déploiement Fly automatique sur `main` |
 
 Détail et alternatives : [ADR-0001](adr/0001-stack-rust-axum-scaleway.md), amendé
 depuis sur l'hébergement par [ADR-0007](adr/0007-hebergement-fly-mono-app.md)

@@ -258,6 +258,31 @@ fly ssh console -C "weekmeals seed-ingredients"
 fly ssh console -C "weekmeals seed --dir /app/data/recipes"
 ```
 
+### Déploiements suivants — automatiques
+
+Une fois la première mise en ligne faite, **tout merge sur `main` déploie**
+(job `deploy` de [`ci.yml`](.github/workflows/ci.yml)), à condition que fmt,
+clippy et les tests soient au vert. Le build tourne sur les builders Fly
+(`--remote-only`), pas sur le runner GitHub.
+
+Deux choses à provisionner une fois pour que ça marche :
+
+```sh
+fly tokens create deploy -x 8760h   # jeton de déploiement, valable un an
+```
+
+puis le coller dans les secrets du dépôt sous le nom **`FLY_API_TOKEN`**
+(Settings → Secrets and variables → Actions). Le job cible l'environnement
+GitHub `production` : le créer permet d'y exiger une approbation manuelle avant
+chaque déploiement, mais il fonctionne sans.
+
+Les déploiements ne se chevauchent jamais (`concurrency: deploy-fly`) — l'app
+n'a qu'une machine et un volume. Pour déployer à la main malgré tout :
+
+```sh
+fly deploy
+```
+
 ### Vérifier en local avant de pousser
 
 L'image se construit et se teste sans Fly :
