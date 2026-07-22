@@ -8,9 +8,10 @@ create table ingredient_reference (
     name         text primary key,
     category     text not null,
     avg_weight_g integer not null check (avg_weight_g > 0),
-    -- true = s'achète toujours en pièces (œufs…), jamais reconverti en grammes.
-    countable    boolean not null default false,
-    updated_at   timestamptz not null default now()
+    -- 1 = s'achète toujours en pièces (œufs…), jamais reconverti en grammes.
+    -- SQLite n'a pas de type booléen : integer 0/1, que SQLx lit en `bool`.
+    countable    integer not null default 0,
+    updated_at   text not null default (datetime('now'))
 );
 
 -- Liste de courses du foyer. Une seule liste courante par foyer : les lignes
@@ -18,18 +19,18 @@ create table ingredient_reference (
 -- les ajouts manuels survivent à une régénération — c'est ce qui rend
 -- `POST /shopping-list/generate` idempotent.
 create table shopping_list_items (
-    id           uuid primary key default gen_random_uuid(),
-    household_id uuid not null references households (id) on delete cascade,
+    id           blob primary key,
+    household_id blob not null references households (id) on delete cascade,
     name         text not null,
-    amount       double precision not null check (amount > 0),
+    amount       real not null check (amount > 0),
     unit         text not null,
     -- Rayon, connu seulement pour les ingrédients référencés.
     category     text,
-    checked      boolean not null default false,
-    generated    boolean not null default false,
+    checked      integer not null default 0,
+    generated    integer not null default 0,
     -- Ordre d'affichage : suit l'ordre de sortie du service de conversion.
     position     integer not null default 0,
-    created_at   timestamptz not null default now()
+    created_at   text not null default (datetime('now'))
 );
 
 create index shopping_list_items_household_idx

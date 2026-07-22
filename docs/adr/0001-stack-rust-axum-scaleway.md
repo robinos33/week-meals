@@ -1,6 +1,8 @@
 # ADR-0001 — Stack : Rust/Axum + React, hébergement 0 €
 
-- **Statut :** acceptée (2026-07-11)
+- **Statut :** acceptée (2026-07-11), **partiellement remplacée** (2026-07-22)
+  par [ADR-0008](0008-sqlite-volume-fly.md) : la base passe de Neon à SQLite.
+  Le reste (Rust/Axum, React/Vite, R2) reste en vigueur.
 
 ## Contexte
 

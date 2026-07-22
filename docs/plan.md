@@ -104,18 +104,20 @@ mutations rejouée au retour du réseau. Conflits en *last-write-wins* (suffisan
 |---|---|---|
 | Backend | Rust — Axum + SQLx + Tokio | `webauthn-rs`, sessions cookie (`tower-sessions`) |
 | Frontend | React + Vite + TS | TanStack Query/Router, `vite-plugin-pwa`, Dexie |
-| BDD | PostgreSQL — Neon (free tier 0,5 Go) | Docker en local |
+| BDD | SQLite — un simple fichier | Créée et migrée au démarrage — [ADR-0008](adr/0008-sqlite-volume-fly.md) |
 | Photos | Cloudflare R2 (10 Go gratuits) | Upload via URL présignée |
 | Front hosting | Cloudflare Pages | |
 | API hosting | Scaleway Serverless Containers | Scale-to-zero, cold start ~1-2 s acceptable |
 | CI/CD | GitHub Actions | fmt + clippy + tests + deploy ; purge des vieilles images du registry |
 
-Détail et alternatives : [ADR-0001](adr/0001-stack-rust-axum-scaleway.md).
+Détail et alternatives : [ADR-0001](adr/0001-stack-rust-axum-scaleway.md),
+amendé sur la base de données par [ADR-0008](adr/0008-sqlite-volume-fly.md).
 
 ## Qualité
 
 - Tests unitaires sur le domaine — la conversion est le cœur à blinder.
-- Tests d'intégration avec Testcontainers (Postgres réel).
+- Tests d'intégration contre une vraie base — un fichier SQLite jetable par
+  test, donc sans service à lancer ni test `#[ignore]`.
 - Vitest côté front.
 - `docker-compose` pour le dev local, `.env.example`, README self-host.
 

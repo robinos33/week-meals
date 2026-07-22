@@ -6,12 +6,14 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use server::{app, pool, Config};
 use tower::ServiceExt; // pour `oneshot`
-use tower_sessions_sqlx_store::PostgresStore;
+use tower_sessions_sqlx_store::SqliteStore;
 
 #[tokio::test]
 async fn health_returns_200() {
-    let pool = pool("postgres://localhost/weekmeals_test").unwrap();
-    let store = PostgresStore::new(pool.clone());
+    // Base en mémoire : `/health` ne l'ouvre jamais, elle n'existe que pour
+    // satisfaire la signature de `app`.
+    let pool = pool("sqlite::memory:").unwrap();
+    let store = SqliteStore::new(pool.clone());
     let config = Config::from_env();
 
     let response = app(pool, store, &config)

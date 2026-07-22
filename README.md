@@ -29,7 +29,7 @@ référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredien
 |---|---|
 | Backend | Rust — Axum + SQLx (clean architecture, crates par couche) |
 | Frontend | React + Vite + TypeScript, PWA (offline via IndexedDB) |
-| BDD | PostgreSQL (Neon en prod, Docker en local) |
+| BDD | SQLite — un simple fichier, créé et migré au démarrage |
 | Photos | Cloudflare R2 (S3-compatible) |
 | Hébergement | Cloudflare Pages (front) + Scaleway Serverless Containers (API) |
 
@@ -37,15 +37,14 @@ Le détail des choix et leurs alternatives : [docs/adr/](docs/adr/).
 
 ## Dev local / self-host
 
-Environnement reproductible : PostgreSQL en conteneur + migrations SQLx.
+La base est un **fichier SQLite** (cf. [ADR-0008](docs/adr/0008-sqlite-volume-fly.md)) :
+rien à provisionner, le serveur le crée et le migre au démarrage. Le
+`docker compose` ne sert plus qu'à MinIO, qui tient lieu de R2 pour les photos.
 
 ### Prérequis
 
-- [Docker](https://docs.docker.com/get-docker/) (avec `docker compose`)
-- [`sqlx-cli`](https://crates.io/crates/sqlx-cli) pour jouer les migrations :
-  ```sh
-  cargo install sqlx-cli --no-default-features --features rustls,postgres
-  ```
+- [Docker](https://docs.docker.com/get-docker/) (avec `docker compose`), pour
+  les photos uniquement — l'app démarre sans.
 
 ### Démarrage
 
@@ -53,17 +52,29 @@ Environnement reproductible : PostgreSQL en conteneur + migrations SQLx.
 # 1. Configuration — copier l'exemple et ajuster si besoin
 cp .env.example .env
 
-# 2. Base de données
-docker compose up -d          # Postgres sur localhost:5432 (POSTGRES_PORT pour changer)
+# 2. Stockage des photos (facultatif : sans lui, la présignature répond 503)
+docker compose up -d
 
-# 3. Migrations
-sqlx migrate run --source api/migrations
-
-# 4. API (Axum) — lit .env automatiquement, écoute sur :8080
+# 3. API (Axum) — lit .env, crée et migre ./weekmeals.db, écoute sur :8080
 cargo run --manifest-path api/Cargo.toml -p server
 
-# 5. Front (Vite) — dans un autre terminal, sur :5173
-cd web && npm install && npm run dev
+# 4. Front (Vite) — dans un autre terminal, sur :5173
+cd web && cp .env.example .env.local && npm install && npm run dev
+```
+
+Repartir de zéro tient en une commande — supprimer le fichier suffit :
+
+```sh
+rm -f weekmeals.db*
+```
+
+### Tests
+
+Les tests d'intégration ouvrent chacun une base SQLite temporaire : ils tournent
+sans service à lancer, et sans `--ignored`.
+
+```sh
+cargo test --manifest-path api/Cargo.toml --workspace
 ```
 
 ### CLI — recettes en YAML (`weekmeals`)
@@ -145,14 +156,26 @@ Les migrations vivent dans [`api/migrations/`](api/migrations/), une par fichier
 `AAAAMMJJHHMMSS_description.sql`, appliquées dans l'ordre et suivies par SQLx
 (table `_sqlx_migrations`).
 
+Elles sont écrites en **SQLite** : pas de `uuid` ni de `timestamptz` (les
+correspondances de types sont fixées par l'[ADR-0008](docs/adr/0008-sqlite-volume-fly.md)),
+et `alter table` n'accepte qu'une colonne à la fois. Ajouter une migration :
+créer le fichier à la main, ou avec [`sqlx-cli`](https://crates.io/crates/sqlx-cli)
+si on l'a installé (`cargo install sqlx-cli --no-default-features --features rustls,sqlite`) :
+
 ```sh
-sqlx migrate add <description>          # nouvelle migration (préciser --source api/migrations)
-sqlx migrate run    --source api/migrations   # appliquer les migrations en attente
-sqlx migrate info   --source api/migrations   # état appliqué / en attente
+sqlx migrate add <description> --source api/migrations
 ```
 
 > Les migrations sont **append-only** : ne jamais éditer une migration déjà
 > livrée, en ajouter une nouvelle.
+
+Inspecter la base de dev, au besoin :
+
+```sh
+sqlite3 weekmeals.db '.tables'
+# Les UUID sont des blobs : les lire avec hex()
+sqlite3 weekmeals.db 'select hex(id), title from recipes'
+```
 
 ## Documentation
 

@@ -5,6 +5,11 @@
 # Rust
 target/
 
+# Base SQLite de dev (cf. ADR-0008) et ses journaux WAL.
+*.db
+*.db-shm
+*.db-wal
+
 # Node
 node_modules/
 dist/

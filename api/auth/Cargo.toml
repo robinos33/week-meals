@@ -32,7 +32,7 @@ webauthn-rs = { version = "0.5.5", features = [
     "danger-allow-state-serialisation",
 ] }
 tracing = "0.1"
-# 0.14 pour rester aligné sur `tower-sessions-sqlx-store` (store Postgres).
+# 0.14 pour rester aligné sur `tower-sessions-sqlx-store` (store SQLite).
 tower-sessions = "0.14"
 axum = { workspace = true, features = ["json"] }
 serde.workspace = true

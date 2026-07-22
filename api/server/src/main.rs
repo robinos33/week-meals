@@ -17,7 +17,10 @@ async fn main() {
         .init();
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL doit être défini");
-    let pool = server::pool(&database_url).expect("configuration du pool Postgres");
+    let pool = server::pool(&database_url).expect("configuration du pool SQLite");
+    server::migrate(&pool)
+        .await
+        .expect("migrations applicatives");
     let session_store = server::init_session_store(&pool)
         .await
         .expect("migration du store de sessions");

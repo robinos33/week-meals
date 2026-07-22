@@ -65,7 +65,7 @@ pub struct Recipe {
 
 /// Borne haute d'un temps de préparation / cuisson, en minutes.
 ///
-/// Les temps sont persistés dans un `integer` Postgres (cf. ADR-0003 : la DB
+/// Les temps sont persistés dans un `integer` 32 bits (cf. ADR-0003 : la DB
 /// est la source de vérité) : au-delà, l'écriture violerait la contrainte
 /// `check (>= 0)` après troncature. On valide donc ici, pour que l'entrée
 /// hors bornes ressorte en `Invalid` (422) plutôt qu'en panne technique (500).
@@ -330,10 +330,47 @@ pub trait RecipeScraper: Send + Sync {
     async fn scrape(&self, url: &str) -> Result<ScrapedRecipe, ScrapeError>;
 }
 
+/// Clé de recherche et de tri d'un titre : minuscules, accents dépliés.
+///
+/// Existe parce que SQLite ne sait comparer les chaînes qu'octet par octet
+/// (cf. ADR-0008) : `like` n'y est insensible à la casse qu'en ASCII, et
+/// `order by` classerait « Éclair » après « Zeste ». Le titre normalisé est
+/// donc stocké dans une colonne dédiée, écrite par l'infrastructure à chaque
+/// création ou mise à jour.
+///
+/// Le dépliage passe par la décomposition Unicode NFD, dont on jette les
+/// marques combinantes : « Crème Brûlée » devient « creme brulee ». C'est aussi
+/// un progrès fonctionnel — la recherche tolère désormais un accent oublié.
+#[must_use]
+pub fn normalize_title(title: &str) -> String {
+    use unicode_normalization::char::is_combining_mark;
+    use unicode_normalization::UnicodeNormalization;
+
+    title
+        .trim()
+        .to_lowercase()
+        .nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use kernel::Unit;
+
+    #[test]
+    fn normalizes_case_and_accents() {
+        assert_eq!(normalize_title("  Crème Brûlée "), "creme brulee");
+        assert_eq!(normalize_title("ÉCLAIR"), normalize_title("eclair"));
+    }
+
+    #[test]
+    fn keeps_non_decomposable_letters() {
+        // « œ » et « ß » n'ont pas de décomposition canonique : ils survivent
+        // tels quels plutôt que d'être perdus.
+        assert_eq!(normalize_title("Bœuf"), "bœuf");
+    }
 
     fn ingredient(name: &str, amount: f64, unit: Unit) -> RecipeIngredient {
         RecipeIngredient::new(name, Quantity::new(amount, unit).unwrap()).unwrap()

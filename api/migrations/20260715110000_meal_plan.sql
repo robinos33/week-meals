@@ -3,20 +3,25 @@
 
 -- La FK composite (household_id, recipe_id) garantit qu'on ne planifie qu'une
 -- recette DU foyer ; elle exige une contrainte d'unicité sur ces colonnes côté
--- recettes (ajoutée ici, migrations append-only).
-alter table recipes add constraint recipes_household_id_id_key unique (household_id, id);
+-- recettes. SQLite n'a pas d'`alter table … add constraint` : c'est un index
+-- unique nommé, que la FK ci-dessous référence tout aussi bien.
+create unique index recipes_household_id_id_key on recipes (household_id, id);
 
 create table meal_plan (
-    household_id uuid not null,
-    meal_date    date not null,
+    household_id blob not null,
+    -- `date` en Postgres ; ici du texte `YYYY-MM-DD`, dont l'ordre
+    -- lexicographique est aussi l'ordre chronologique (`between` reste juste).
+    meal_date    text not null,
     slot         text not null check (slot in ('lunch', 'dinner')),
-    recipe_id    uuid not null,
-    updated_at   timestamptz not null default now(),
+    recipe_id    blob not null,
+    updated_at   text not null default (datetime('now')),
     primary key (household_id, meal_date, slot),
     foreign key (household_id) references households (id) on delete cascade,
-    -- Nommée : l'infra distingue cette violation (recette hors foyer ⇒ 404)
-    -- de celle du foyer ci-dessus (panne ⇒ 500), via le nom de contrainte.
-    constraint meal_plan_recipe_fkey foreign key (household_id, recipe_id)
+    -- SQLite ne nomme pas la contrainte violée dans ses erreurs : l'infra ne
+    -- peut plus distinguer « recette hors foyer » (404) d'une panne (500) après
+    -- coup. Elle vérifie donc l'appartenance avant d'écrire (cf. ADR-0008) ;
+    -- cette FK reste le garde-fou d'intégrité.
+    foreign key (household_id, recipe_id)
         references recipes (household_id, id) on delete cascade
 );
 

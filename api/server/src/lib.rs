@@ -1,10 +1,10 @@
 //! Crate `server` — couche HTTP (Axum) et composition de l'application.
 //!
 //! Le binaire monte ici les sous-routers exposés par chaque domaine, derrière
-//! une couche de sessions cookie (`tower-sessions`, store Postgres) et une
-//! couche CORS pour le front (origine distincte en prod : Pages ↔ Scaleway).
+//! une couche de sessions cookie (`tower-sessions`, store SQLite) et une
+//! couche CORS pour le front (origine distincte en dev : Vite ↔ Axum).
 //!
-//! [`app`] construit le routeur à partir d'un `PgPool` afin que les tests
+//! [`app`] construit le routeur à partir d'un `SqlitePool` afin que les tests
 //! d'intégration puissent l'assembler sans ouvrir de socket (pool paresseux).
 
 use std::sync::Arc;
@@ -12,13 +12,13 @@ use std::sync::Arc;
 use axum::http::{HeaderValue, Method};
 use axum::{routing::get, Json, Router};
 use serde::Serialize;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
+use sqlx::SqlitePool;
 use tower_http::cors::CorsLayer;
 use tower_sessions::cookie::time::Duration;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::{Expiry, SessionManagerLayer};
-use tower_sessions_sqlx_store::PostgresStore;
+use tower_sessions_sqlx_store::SqliteStore;
 
 use auth::domain::pairing::Argon2PairingHasher;
 use auth::infrastructure::{
@@ -102,6 +102,18 @@ impl Config {
     }
 }
 
+/// Migrations applicatives embarquées dans le binaire (`api/migrations`).
+///
+/// Jouées au démarrage plutôt que par une étape `sqlx-cli` séparée : la base
+/// étant un simple fichier (cf. ADR-0008), il n'y a rien à provisionner avant
+/// de lancer le serveur — et un seul migrateur à la fois, par construction.
+///
+/// # Errors
+/// Remonte l'erreur SQLx si une migration échoue ou si l'historique diverge.
+pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateError> {
+    sqlx::migrate!("../migrations").run(pool).await
+}
+
 /// Extrait l'hôte (sans schéma ni port) d'une URL, pour déduire le `rp_id`.
 /// S'appuie sur le parseur d'`url`, déjà présent via `webauthn-rs`, plutôt que
 /// sur un découpage de chaîne à la main.
@@ -120,23 +132,43 @@ fn env_flag(key: &str) -> bool {
     )
 }
 
-/// Ouvre un pool Postgres (connexions établies à la demande).
+/// Ouvre un pool SQLite (connexions établies à la demande).
+///
+/// `database_url` est de la forme `sqlite:///data/weekmeals.db`. Le fichier est
+/// créé s'il n'existe pas : au premier démarrage sur un volume Fly vierge, il
+/// n'y a rien à provisionner à la main.
+///
+/// Les pragmas ne sont pas cosmétiques (cf. ADR-0008) :
+/// - `foreign_keys` — **désactivées par défaut** dans SQLite ; sans elles tous
+///   les `on delete cascade` du schéma seraient décoratifs ;
+/// - `WAL` — lecteurs et écrivain cessent de se bloquer, et c'est le journal
+///   que Litestream réplique ;
+/// - `busy_timeout` — attendre plutôt que d'échouer sur `SQLITE_BUSY` ;
+/// - `synchronous = NORMAL` — le compromis recommandé avec WAL.
 ///
 /// # Errors
 /// Remonte l'erreur SQLx si l'URL est invalide.
-pub fn pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
-    PgPoolOptions::new()
+pub fn pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
+    let options = database_url
+        .parse::<SqliteConnectOptions>()?
+        .create_if_missing(true)
+        .foreign_keys(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .busy_timeout(std::time::Duration::from_secs(5))
+        .synchronous(SqliteSynchronous::Normal);
+
+    Ok(SqlitePoolOptions::new()
         .max_connections(5)
-        .connect_lazy(database_url)
+        .connect_lazy_with(options))
 }
 
 /// Construit le store de sessions et applique sa migration (table
-/// `tower_sessions.session`). À appeler une fois au démarrage.
+/// `tower_sessions_session`). À appeler une fois au démarrage.
 ///
 /// # Errors
 /// Remonte l'erreur SQLx si la migration échoue.
-pub async fn init_session_store(pool: &PgPool) -> Result<PostgresStore, sqlx::Error> {
-    let store = PostgresStore::new(pool.clone());
+pub async fn init_session_store(pool: &SqlitePool) -> Result<SqliteStore, sqlx::Error> {
+    let store = SqliteStore::new(pool.clone());
     store.migrate().await?;
     Ok(store)
 }
@@ -146,7 +178,7 @@ pub async fn init_session_store(pool: &PgPool) -> Result<PostgresStore, sqlx::Er
 /// `session_store` est injecté (plutôt que reconstruit) pour que le démarrage
 /// puisse d'abord jouer sa migration ; les tests peuvent passer un store non
 /// migré tant qu'ils ne touchent pas la session.
-pub fn app(pool: PgPool, session_store: PostgresStore, config: &Config) -> Router {
+pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Router {
     let session_layer = SessionManagerLayer::new(session_store)
         .with_http_only(true)
         .with_same_site(config.same_site)

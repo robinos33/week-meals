@@ -22,7 +22,8 @@ use clap::{Parser, Subcommand};
 use kernel::{DeviceId, HouseholdId, RecipeId, UserId, DEMO_HOUSEHOLD_ID};
 use recipes::domain::{RecipeRepository, RecipeScraper};
 use recipes::infrastructure::{HttpRecipeScraper, SqlxRecipeRepository};
-use sqlx::postgres::PgPoolOptions;
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::sqlite::SqlitePoolOptions;
 use uuid::Uuid;
 
 use ingredient_yaml::ReferenceFile;
@@ -151,9 +152,18 @@ async fn main() -> Result<()> {
     }
 
     let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL doit être défini")?;
-    let pool = PgPoolOptions::new()
+    // `create_if_missing` reste à faux, contrairement au serveur : une faute de
+    // frappe dans le chemin doit échouer, pas créer une base vide à côté de la
+    // vraie. Clés étrangères activées (elles ne le sont pas par défaut) — le
+    // réimport d'une recette repose sur leurs cascades.
+    let options = database_url
+        .parse::<SqliteConnectOptions>()
+        .context("DATABASE_URL invalide (attendu : sqlite://chemin/vers/weekmeals.db)")?
+        .foreign_keys(true)
+        .busy_timeout(std::time::Duration::from_secs(5));
+    let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(&database_url)
+        .connect_with(options)
         .await
         .context("connexion à la base de données")?;
     let repo = SqlxRecipeRepository::new(pool.clone());
@@ -206,7 +216,7 @@ fn resolve_household(explicit: Option<Uuid>) -> HouseholdId {
 /// Exécute une sous-commande `device` (cf. ADR-0006).
 async fn run_device(
     command: DeviceCommand,
-    pool: &sqlx::PgPool,
+    pool: &sqlx::SqlitePool,
     household: HouseholdId,
 ) -> Result<()> {
     let devices = SqlxDeviceRepository::new(pool.clone());
