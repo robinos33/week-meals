@@ -19,6 +19,10 @@ primary_region = "cdg"
   # Fail-closed : seuls les appareils enrôlés par passkey entrent (ADR-0006).
   AUTH_MODE = "locked"
   RUST_LOG = "info"
+  # Photos écrites sur le volume, à côté de la base (ADR-0009). Pas de secret :
+  # aucun R2_* n'étant défini, ce backend prend le relais. URLs same-origin, donc
+  # PHOTO_PUBLIC_BASE garde son défaut relatif (/api/recipes/photos).
+  PHOTO_STORAGE_DIR = "/data/photos"
 
 # Volume portant la base SQLite. À créer une fois, dans la région primaire :
 #   fly volumes create weekmeals_data --region cdg --size 1

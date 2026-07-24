@@ -36,7 +36,9 @@ use kernel::DEMO_HOUSEHOLD_ID;
 use meal_plan::infrastructure::SqlxMealPlanRepository;
 use meal_plan::presentation::MealPlanState;
 use recipes::domain::PhotoStorage;
-use recipes::infrastructure::{HttpRecipeScraper, R2Config, R2PhotoStorage, SqlxRecipeRepository};
+use recipes::infrastructure::{
+    HttpRecipeScraper, R2Config, R2PhotoStorage, SqlxRecipeRepository, VolumePhotoStorage,
+};
 use recipes::presentation::RecipeState;
 use shopping_list::infrastructure::{
     SqlxCookedCounter, SqlxPlannedIngredients, SqlxReferenceRepository, SqlxShoppingListRepository,
@@ -213,9 +215,11 @@ pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Rou
         hasher: Arc::new(Argon2PairingHasher::new()),
         household_id: HouseholdId::from(DEMO_HOUSEHOLD_ID),
     };
+    let (photos, local_photos) = photo_storage_from_env();
     let recipe_state = RecipeState {
         recipes: Arc::new(SqlxRecipeRepository::new(pool.clone())),
-        photos: photo_storage_from_env(),
+        photos,
+        local_photos,
         // Import par URL (#61) : garde SSRF, c'est le serveur qui fetch.
         scraper: Arc::new(HttpRecipeScraper::guarded()),
     };
@@ -255,10 +259,31 @@ pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Rou
     }
 }
 
-/// Construit le stockage photo (R2/MinIO) depuis l'environnement, ou `None` si
-/// la configuration est incomplète — dans ce cas la présignature répond `503`
-/// et le front garde le champ URL en repli.
-fn photo_storage_from_env() -> Option<Arc<dyn PhotoStorage>> {
+/// Choisit le backend de stockage photo depuis l'environnement (cf. ADR-0009),
+/// dans l'ordre : **R2** si les `R2_*` sont là, sinon le **volume** si
+/// `PHOTO_STORAGE_DIR` est défini, sinon rien (la présignature répond `503` et le
+/// front garde le champ URL en repli).
+///
+/// Renvoie `(photos, local_photos)` : le premier sert la présignature (R2 ou
+/// volume), le second n'est `Some` qu'en mode volume — il porte les routes de
+/// dépôt/service des fichiers.
+fn photo_storage_from_env() -> (
+    Option<Arc<dyn PhotoStorage>>,
+    Option<Arc<VolumePhotoStorage>>,
+) {
+    if let Some(r2) = r2_storage_from_env() {
+        return (Some(r2), None);
+    }
+    if let Some(volume) = volume_storage_from_env() {
+        // Même objet des deux côtés : la présignation (`photos`) et les routes
+        // fichiers (`local_photos`) partagent la table des jetons en attente.
+        return (Some(volume.clone()), Some(volume));
+    }
+    (None, None)
+}
+
+/// Stockage R2/MinIO depuis les `R2_*`, ou `None` si la config est incomplète.
+fn r2_storage_from_env() -> Option<Arc<dyn PhotoStorage>> {
     let var = |key: &str| std::env::var(key).ok().filter(|value| !value.is_empty());
 
     let config = R2Config {
@@ -275,7 +300,31 @@ fn photo_storage_from_env() -> Option<Arc<dyn PhotoStorage>> {
     match R2PhotoStorage::new(config) {
         Ok(storage) => Some(Arc::new(storage)),
         Err(error) => {
-            tracing::warn!("stockage photo désactivé : {error}");
+            tracing::warn!("stockage photo R2 désactivé : {error}");
+            None
+        }
+    }
+}
+
+/// Stockage sur volume, activé par `PHOTO_STORAGE_DIR` (cf. ADR-0009). `None` si
+/// la variable est absente, ou si le répertoire ne peut être créé.
+///
+/// `PHOTO_PUBLIC_BASE` fixe la base des URLs (défaut `/api/recipes/photos`,
+/// relatif = même origine en prod ; à passer en absolu si le front est sur une
+/// autre origine, p. ex. en dev).
+fn volume_storage_from_env() -> Option<Arc<VolumePhotoStorage>> {
+    let dir = std::env::var("PHOTO_STORAGE_DIR")
+        .ok()
+        .filter(|value| !value.is_empty())?;
+    let url_base = std::env::var("PHOTO_PUBLIC_BASE")
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/api/recipes/photos".to_owned());
+
+    match VolumePhotoStorage::new(dir, url_base, std::time::Duration::from_secs(900)) {
+        Ok(storage) => Some(Arc::new(storage)),
+        Err(error) => {
+            tracing::warn!("stockage photo volume désactivé : {error}");
             None
         }
     }

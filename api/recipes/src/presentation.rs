@@ -1,6 +1,8 @@
-//! Couche présentation de `recipes` : routes Axum et DTO. Toutes les routes
-//! sont protégées par l'extractor [`AuthUser`] (auth) et **scopées au foyer**
-//! de l'utilisateur connecté.
+//! Couche présentation de `recipes` : routes Axum et DTO. Les routes de gestion
+//! des recettes sont protégées par l'extractor [`AuthUser`] (auth) et **scopées
+//! au foyer** de l'utilisateur connecté. Exception : le dépôt et le service des
+//! fichiers photo du volume (ADR-0009) ne passent pas par la session — le dépôt
+//! est autorisé par le jeton du presign, le service sert une clé UUID opaque.
 //!
 //! | Méthode | Route                     | Use case                      |
 //! |---------|---------------------------|-------------------------------|
@@ -8,6 +10,8 @@
 //! | POST    | `/recipes`                | création                      |
 //! | POST    | `/recipes/scrape`         | import par URL → brouillon (#61) |
 //! | POST    | `/recipes/photos/presign` | présignature upload photo     |
+//! | PUT     | `/recipes/photos/:file`   | dépôt fichier (volume, ADR-0009) |
+//! | GET     | `/recipes/photos/:file`   | service fichier (volume)      |
 //! | GET     | `/recipes/:id`            | détail                        |
 //! | PUT     | `/recipes/:id`            | mise à jour                   |
 //! | DELETE  | `/recipes/:id`            | suppression                   |
@@ -15,8 +19,9 @@
 use std::sync::Arc;
 
 use auth::presentation::AuthUser;
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
+use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -38,15 +43,20 @@ use crate::application::IngredientInput;
 use crate::domain::{
     PhotoError, PhotoStorage, Recipe, RecipeRepository, RecipeScraper, ScrapeError, ScrapedRecipe,
 };
+use crate::infrastructure::VolumePhotoStorage;
 
 /// État injecté dans les routes recettes.
 #[derive(Clone)]
 pub struct RecipeState {
     /// Repository des recettes.
     pub recipes: Arc<dyn RecipeRepository>,
-    /// Stockage des photos (présignature). `None` si R2 n'est pas configuré :
-    /// la route de présignature répond alors `503`.
+    /// Stockage des photos (présignature). `None` si aucun backend n'est
+    /// configuré : la route de présignature répond alors `503`.
     pub photos: Option<Arc<dyn PhotoStorage>>,
+    /// Stockage volume concret, présent seulement quand c'est *lui* le backend
+    /// actif (cf. ADR-0009) : il sert les routes `PUT`/`GET` des fichiers, que
+    /// R2 (quand configuré) n'utilise pas. `None` en mode R2 ou sans stockage.
+    pub local_photos: Option<Arc<VolumePhotoStorage>>,
     /// Scraper d'import par URL (#61). Garde SSRF côté implémentation.
     pub scraper: Arc<dyn RecipeScraper>,
 }
@@ -57,6 +67,15 @@ pub fn router(state: RecipeState) -> Router {
         .route("/recipes", get(list).post(create))
         // Routes statiques : segment fixe prioritaire sur `/recipes/{id}`.
         .route("/recipes/photos/presign", post(presign_photo))
+        // Backend volume (ADR-0009) : dépôt et service des fichiers. `{filename}`
+        // reste plus spécifique que `/recipes/{id}` (préfixe fixe `photos/`).
+        // Le corps du `PUT` est plafonné pour ne pas laisser remplir le volume.
+        .route(
+            "/recipes/photos/{filename}",
+            get(serve_photo)
+                .put(upload_photo)
+                .layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
+        )
         .route("/recipes/scrape", post(scrape_recipe))
         .route("/recipes/{id}", get(detail).put(update).delete(delete))
         .with_state(state)
@@ -335,7 +354,68 @@ async fn presign_photo(
         Err(PhotoError::UnsupportedType(_)) => {
             invalid("type d'image non pris en charge (jpeg, png ou webp)".to_owned())
         }
+        Err(PhotoError::Unauthorized | PhotoError::Backend(_)) => {
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+/// Query de dépôt : le jeton émis par la présignature (backend volume).
+#[derive(Debug, Deserialize)]
+struct UploadQuery {
+    token: String,
+}
+
+/// `PUT /recipes/photos/{filename}` — dépose les octets d'un upload présigné sur
+/// le volume (backend volume uniquement, cf. ADR-0009).
+///
+/// Pas de session : le `PUT` est autorisé par le `token` du presign (le front
+/// dépose sans cookie, comme vers R2). `404` si le backend volume n'est pas
+/// actif (mode R2 ou sans stockage), `403` si le jeton est invalide/expiré,
+/// `422` si le nom de fichier n'est pas une image prise en charge.
+async fn upload_photo(
+    State(state): State<RecipeState>,
+    Path(filename): Path<String>,
+    Query(query): Query<UploadQuery>,
+    body: Bytes,
+) -> impl IntoResponse {
+    let Some(storage) = state.local_photos.as_ref() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match storage.store(&filename, &query.token, &body).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(PhotoError::UnsupportedType(_)) => {
+            invalid("type d'image non pris en charge (jpeg, png ou webp)".to_owned())
+        }
+        Err(PhotoError::Unauthorized) => StatusCode::FORBIDDEN.into_response(),
         Err(PhotoError::Backend(_)) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `GET /recipes/photos/{filename}` — sert un fichier photo du volume (backend
+/// volume uniquement, cf. ADR-0009).
+///
+/// Public (pas de session) : la balise `<img>` charge l'URL directement, et la
+/// clé est un UUID opaque. Contenu adressé par UUID, donc immuable — mis en
+/// cache un an. `404` si le backend volume n'est pas actif ou le fichier absent.
+async fn serve_photo(
+    State(state): State<RecipeState>,
+    Path(filename): Path<String>,
+) -> impl IntoResponse {
+    let Some(storage) = state.local_photos.as_ref() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    match storage.load(&filename).await {
+        Some((content_type, bytes)) => (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, content_type),
+                (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
+            ],
+            bytes,
+        )
+            .into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
     }
 }
 
@@ -438,6 +518,7 @@ mod tests {
         let state = RecipeState {
             recipes: Arc::new(InMemoryRecipes::default()),
             photos: None,
+            local_photos: None,
             scraper: Arc::new(NoopScraper),
         };
         let _ = router(state);
