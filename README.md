@@ -30,7 +30,7 @@ référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredien
 | Backend | Rust — Axum + SQLx (clean architecture, crates par couche) |
 | Frontend | React + Vite + TypeScript, PWA (offline via IndexedDB) |
 | BDD | SQLite — un fichier, sur un volume Fly en prod (Litestream → R2) |
-| Photos | Cloudflare R2 (S3-compatible) |
+| Photos | Volume Fly en prod, ou Cloudflare R2 si configuré (cf. ADR-0009) |
 | Hébergement | Fly.io — une seule app : l'Axum sert l'API (`/api`) et le front |
 
 Le détail des choix et leurs alternatives : [docs/adr/](docs/adr/).
@@ -206,9 +206,9 @@ fly volumes create weekmeals_data --region cdg --size 1
 > seconde lui donnerait sa propre base, et les deux divergeraient en silence.
 > `max_machines_running = 1` le verrouille dans `fly.toml`.
 
-Provisionner un bucket **R2** (photos) et un second pour les sauvegardes, puis
-injecter les secrets — `fly.toml` ne contient que du non-sensible, et plus
-d'URL de base de données du tout :
+Provisionner un bucket **R2** pour les sauvegardes de la base, puis injecter les
+secrets — `fly.toml` ne contient que du non-sensible, et plus d'URL de base de
+données du tout :
 
 ```sh
 fly secrets set \
@@ -216,12 +216,6 @@ fly secrets set \
   WEB_ORIGIN='https://week-meals.fly.dev' \
   WEBAUTHN_RP_ID='week-meals.fly.dev' \
   WEBAUTHN_RP_ORIGIN='https://week-meals.fly.dev' \
-  R2_ENDPOINT='https://<account>.r2.cloudflarestorage.com' \
-  R2_REGION='auto' \
-  R2_BUCKET='week-meals-photos' \
-  R2_ACCESS_KEY_ID='…' \
-  R2_SECRET_ACCESS_KEY='…' \
-  R2_PUBLIC_BASE_URL='https://<domaine-public-du-bucket>' \
   LITESTREAM_ENDPOINT='https://<account>.r2.cloudflarestorage.com' \
   LITESTREAM_BUCKET='week-meals-backups' \
   LITESTREAM_ACCESS_KEY_ID='…' \
@@ -231,6 +225,13 @@ fly secrets set \
 > Sans `LITESTREAM_BUCKET`, l'app démarre quand même — **sans réplication**.
 > C'est pratique pour un dépannage, jamais pour un déploiement durable : le
 > volume seul n'est sauvegardé que par les snapshots quotidiens de Fly.
+
+> **Photos.** Elles sont écrites sur le volume (`PHOTO_STORAGE_DIR=/data/photos`,
+> fixé dans `fly.toml`) — aucun secret à poser (cf.
+> [ADR-0009](docs/adr/0009-photos-volume-fly.md)). Elles ne sont **pas**
+> répliquées par Litestream : perdre le volume, c'est perdre les photos, pas la
+> base. Pour les mettre sur R2 à la place, poser les `R2_*` (endpoint, région,
+> bucket, clés, `R2_PUBLIC_BASE_URL`) en secrets : R2 reprend alors la main.
 
 ```sh
 fly deploy

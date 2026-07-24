@@ -197,7 +197,11 @@ pub enum PhotoError {
     /// Type MIME non pris en charge (cf. [`photo_extension`]).
     #[error("unsupported photo content type: {0}")]
     UnsupportedType(String),
-    /// Panne technique du stockage (S3/R2).
+    /// Dépôt refusé : jeton d'upload absent, expiré ou lié à un autre fichier
+    /// (stockage volume, cf. ADR-0009).
+    #[error("photo upload not authorized")]
+    Unauthorized,
+    /// Panne technique du stockage (S3/R2 ou volume).
     #[error("photo storage error: {0}")]
     Backend(String),
 }

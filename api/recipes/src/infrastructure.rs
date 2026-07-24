@@ -470,3 +470,218 @@ impl PhotoStorage for R2PhotoStorage {
         })
     }
 }
+
+// --- Stockage des photos sur le volume Fly (cf. ADR-0009) -------------------
+
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+/// Un upload présigné en attente : le jeton autorise un unique `PUT` sur
+/// `filename`, jusqu'à `expires_at`.
+struct PendingUpload {
+    filename: String,
+    expires_at: Instant,
+}
+
+/// Implémentation du port [`PhotoStorage`] écrivant sur le **volume Fly** monté
+/// (cf. ADR-0009), là où vit déjà la base SQLite.
+///
+/// Contrairement à [`R2PhotoStorage`], les octets **transitent par l'API** :
+/// `presign_upload` émet un jeton à usage unique et renvoie des URLs servies par
+/// nos propres routes `PUT`/`GET /recipes/photos/{filename}`. Le jeton vit en
+/// mémoire du process — une seule machine (ADR-0008), fenêtre de quelques
+/// secondes — plutôt qu'en base.
+pub struct VolumePhotoStorage {
+    dir: PathBuf,
+    /// Base des URLs renvoyées, p. ex. `/api/recipes/photos` (relatif = même
+    /// origine en prod) ; sans slash final.
+    url_base: String,
+    expiry: Duration,
+    pending: Mutex<HashMap<String, PendingUpload>>,
+}
+
+impl VolumePhotoStorage {
+    /// Prépare le stockage en créant `dir` au besoin.
+    ///
+    /// # Errors
+    /// [`PhotoError::Backend`] si le répertoire ne peut pas être créé.
+    pub fn new(
+        dir: impl Into<PathBuf>,
+        url_base: impl Into<String>,
+        expiry: Duration,
+    ) -> Result<Self, PhotoError> {
+        let dir = dir.into();
+        std::fs::create_dir_all(&dir).map_err(|e| PhotoError::Backend(e.to_string()))?;
+        Ok(Self {
+            dir,
+            url_base: url_base.into().trim_end_matches('/').to_owned(),
+            expiry,
+            pending: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// Dépose les octets d'un upload présigné, autorisé par `token` (usage
+    /// unique, lié à `filename`).
+    ///
+    /// # Errors
+    /// - [`PhotoError::UnsupportedType`] si `filename` n'est pas un `<uuid>.<ext>`
+    ///   d'image pris en charge ;
+    /// - [`PhotoError::Backend`] si le jeton est absent/expiré ou l'écriture échoue.
+    pub async fn store(&self, filename: &str, token: &str, bytes: &[u8]) -> Result<(), PhotoError> {
+        if content_type_for(filename).is_none() {
+            return Err(PhotoError::UnsupportedType(filename.to_owned()));
+        }
+        self.consume_token(token, filename)?;
+        tokio::fs::write(self.dir.join(filename), bytes)
+            .await
+            .map_err(|e| PhotoError::Backend(e.to_string()))
+    }
+
+    /// Lit un fichier photo et son type MIME. `None` si le nom est invalide ou
+    /// le fichier absent.
+    pub async fn load(&self, filename: &str) -> Option<(&'static str, Vec<u8>)> {
+        let content_type = content_type_for(filename)?;
+        let bytes = tokio::fs::read(self.dir.join(filename)).await.ok()?;
+        Some((content_type, bytes))
+    }
+
+    /// Vérifie et consomme un jeton lié à `filename`, en purgeant au passage les
+    /// jetons expirés.
+    fn consume_token(&self, token: &str, filename: &str) -> Result<(), PhotoError> {
+        let now = Instant::now();
+        let mut pending = self.pending.lock().expect("verrou des uploads en attente");
+        pending.retain(|_, upload| upload.expires_at > now);
+        match pending.get(token) {
+            Some(upload) if upload.filename == filename => {
+                pending.remove(token);
+                Ok(())
+            }
+            _ => Err(PhotoError::Unauthorized),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl PhotoStorage for VolumePhotoStorage {
+    async fn presign_upload(&self, content_type: &str) -> Result<PhotoUpload, PhotoError> {
+        let extension = photo_extension(content_type)
+            .ok_or_else(|| PhotoError::UnsupportedType(content_type.to_owned()))?;
+        // Clé opaque : évite les collisions et ne fuite pas le nom d'origine.
+        let filename = format!("{}.{extension}", Uuid::new_v4());
+        let token = Uuid::new_v4().to_string();
+        let now = Instant::now();
+        let mut pending = self.pending.lock().expect("verrou des uploads en attente");
+        // Purge des jetons jamais suivis d'un PUT : sans ça la table grossirait
+        // au fil des presigns abandonnés.
+        pending.retain(|_, upload| upload.expires_at > now);
+        pending.insert(
+            token.clone(),
+            PendingUpload {
+                filename: filename.clone(),
+                expires_at: now + self.expiry,
+            },
+        );
+        drop(pending);
+        Ok(PhotoUpload {
+            upload_url: format!("{}/{filename}?token={token}", self.url_base),
+            public_url: format!("{}/{filename}", self.url_base),
+        })
+    }
+}
+
+/// Type MIME servi pour un nom `<uuid v4>.<ext>`. `None` si le format ne colle
+/// pas : c'est la validation stricte qui garde les routes photo — un nom qui
+/// n'est pas un UUID (donc ni `..`, ni slash, ni autre extension) est rejeté
+/// avant tout accès disque.
+fn content_type_for(filename: &str) -> Option<&'static str> {
+    let (stem, extension) = filename.rsplit_once('.')?;
+    if Uuid::try_parse(stem).is_err() {
+        return None;
+    }
+    match extension {
+        "jpg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod volume_photo_tests {
+    use super::*;
+
+    fn storage() -> VolumePhotoStorage {
+        let dir = std::env::temp_dir().join(format!("weekmeals-photos-{}", Uuid::new_v4()));
+        VolumePhotoStorage::new(dir, "/api/recipes/photos", Duration::from_secs(900))
+            .expect("création du stockage")
+    }
+
+    #[tokio::test]
+    async fn presign_puis_store_puis_load_boucle() {
+        let store = storage();
+        let upload = store.presign_upload("image/png").await.expect("presign");
+
+        // upload_url = <public_url>?token=..., et public_url pointe sur nos routes.
+        assert!(upload.public_url.starts_with("/api/recipes/photos/"));
+        assert!(upload.public_url.ends_with(".png"));
+        let (public_path, query) = upload.upload_url.split_once('?').expect("token en query");
+        assert_eq!(public_path, upload.public_url);
+        let token = query.strip_prefix("token=").expect("param token");
+        let filename = upload.public_url.rsplit('/').next().unwrap();
+
+        store
+            .store(filename, token, b"des octets png")
+            .await
+            .expect("dépôt");
+        let (content_type, bytes) = store.load(filename).await.expect("lecture");
+        assert_eq!(content_type, "image/png");
+        assert_eq!(bytes, b"des octets png");
+    }
+
+    #[tokio::test]
+    async fn jeton_a_usage_unique() {
+        let store = storage();
+        let upload = store.presign_upload("image/jpeg").await.unwrap();
+        let token = upload.upload_url.split("token=").nth(1).unwrap().to_owned();
+        let filename = upload.public_url.rsplit('/').next().unwrap();
+
+        store
+            .store(filename, &token, b"a")
+            .await
+            .expect("1er dépôt");
+        // Le jeton est consommé : un second dépôt échoue.
+        assert!(store.store(filename, &token, b"b").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn jeton_lie_a_un_seul_fichier() {
+        let store = storage();
+        let upload = store.presign_upload("image/webp").await.unwrap();
+        let token = upload.upload_url.split("token=").nth(1).unwrap().to_owned();
+
+        let autre = format!("{}.webp", Uuid::new_v4());
+        assert!(store.store(&autre, &token, b"x").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn noms_de_fichier_invalides_rejetes() {
+        let store = storage();
+        // Traversée de chemin, extension inconnue, nom non-UUID : tous rejetés
+        // avant tout accès disque.
+        assert!(store.load("../secret.png").await.is_none());
+        assert!(store.load("recette.png").await.is_none());
+        assert!(store
+            .load(&format!("{}.gif", Uuid::new_v4()))
+            .await
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn store_refuse_une_extension_non_supportee() {
+        let store = storage();
+        let bad = format!("{}.gif", Uuid::new_v4());
+        let err = store.store(&bad, "peu-importe", b"x").await.unwrap_err();
+        assert!(matches!(err, PhotoError::UnsupportedType(_)));
+    }
+}
