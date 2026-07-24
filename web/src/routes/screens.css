@@ -97,6 +97,8 @@
 /* Médaille du podium des recettes les plus cuisinées (#58). */
 .recipe-card__medal {
   position: absolute;
+  /* Au-dessus de la photo, elle-même en `position: absolute` (#70). */
+  z-index: 1;
   top: 0.4rem;
   left: 0.4rem;
   font-size: 1.35rem;
@@ -105,7 +107,15 @@
   pointer-events: none;
 }
 
+/*
+ * Photo sortie du flux : en `width/height: 100%` dans le flux, l'image
+ * contribue à la taille minimale du conteneur `display: grid` et sa hauteur
+ * intrinsèque prend le dessus sur l'`aspect-ratio: 4 / 3`. En absolu, la boîte
+ * garde son ratio quel que soit le format de la photo, et `cover` recadre (#70).
+ */
 .recipe-card__photo img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
