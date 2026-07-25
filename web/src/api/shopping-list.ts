@@ -6,8 +6,9 @@
  * génération), soit **ajoutées à la main** (conservées).
  */
 
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "./client";
+import { api, eventSource } from "./client";
 
 /** Unités acceptées par l'API (mêmes que les recettes). */
 export const UNITS = ["g", "kg", "ml", "l", "piece"] as const;
@@ -41,6 +42,38 @@ export function useShoppingList() {
     queryKey: LIST_KEY,
     queryFn: () => api.get<ShoppingItem[]>("/shopping-list"),
   });
+}
+
+/**
+ * Abonne l'écran au flux temps réel de la liste (#21).
+ *
+ * À chaque signal `changed` poussé par le serveur — qu'il vienne de soi ou de
+ * l'autre personne en train de faire les courses — on invalide le cache pour
+ * relire la liste. C'est ce qui la rend « vivante » à deux, sans recharger
+ * l'onglet. `EventSource` se reconnecte tout seul si le réseau saute.
+ *
+ * Renvoie `live` (flux connecté) pour un indicateur discret côté UI.
+ */
+export function useShoppingListStream(): { live: boolean } {
+  const queryClient = useQueryClient();
+  const [live, setLive] = useState(false);
+
+  useEffect(() => {
+    const source = eventSource("/shopping-list/stream");
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: LIST_KEY });
+
+    source.addEventListener("changed", invalidate);
+    source.onopen = () => setLive(true);
+    // `EventSource` bascule seul en reconnexion : on reflète juste l'état.
+    source.onerror = () => setLive(false);
+
+    return () => {
+      source.removeEventListener("changed", invalidate);
+      source.close();
+    };
+  }, [queryClient]);
+
+  return { live };
 }
 
 /** Invalide la liste après une écriture. */

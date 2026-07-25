@@ -15,6 +15,25 @@
   font-size: 1.9rem;
 }
 
+/* Point discret de synchro temps réel (liste de courses, #21) : vert plein
+   quand le flux SSE est connecté, gris estompé pendant une reconnexion. */
+.sync-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--color-muted);
+  opacity: 0.4;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.sync-dot[data-live="true"] {
+  background: var(--color-primary);
+  opacity: 1;
+}
+
 /* L'action d'en-tête reste sur une ligne ; c'est le titre qui cède la place. */
 .screen__header .btn {
   flex: 0 0 auto;

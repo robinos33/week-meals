@@ -4,24 +4,37 @@
 //! | Méthode | Route                          | Use case                          |
 //! |---------|--------------------------------|-----------------------------------|
 //! | GET     | `/shopping-list`               | lire la liste                     |
+//! | GET     | `/shopping-list/stream`        | flux SSE « la liste a changé »    |
 //! | POST    | `/shopping-list/generate`      | (re)générer depuis le calendrier  |
 //! | POST    | `/shopping-list/items`         | ajouter une ligne à la main       |
 //! | PATCH   | `/shopping-list/items/{id}`    | cocher / éditer une ligne         |
 //! | DELETE  | `/shopping-list/items/{id}`    | supprimer une ligne               |
 //! | DELETE  | `/shopping-list/checked`       | vider les lignes cochées          |
+//!
+//! Synchro temps réel (#21) : chaque écriture qui aboutit publie un signal sur
+//! le [`ShoppingListNotifier`] du foyer ; les clients abonnés au flux SSE
+//! rafraîchissent alors leur liste. C'est ce qui rend les courses à deux
+//! « vivantes » sans avoir à recharger l'onglet.
 
+use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Duration;
 
 use auth::presentation::AuthUser;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::NaiveDate;
 use kernel::{ShoppingItemId, Unit};
 use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::{Stream, StreamExt};
 use uuid::Uuid;
+
+use crate::infrastructure::ShoppingListNotifier;
 
 use crate::application::commands::{
     AddItemCommand, AddItemHandler, AddItemResponse, ClearCheckedCommand, ClearCheckedHandler,
@@ -46,12 +59,15 @@ pub struct ShoppingListState {
     pub planned: Arc<dyn PlannedIngredientsSource>,
     /// Compteur « cuisiné X fois » (#58), incrémenté à la génération.
     pub cooked: Arc<dyn CookedCountRecorder>,
+    /// Bus temps réel : signale aux flux SSE qu'une écriture a modifié la liste.
+    pub notifier: ShoppingListNotifier,
 }
 
 /// Sous-router de la liste de courses, monté par le `server`.
 pub fn router(state: ShoppingListState) -> Router {
     Router::new()
         .route("/shopping-list", get(list))
+        .route("/shopping-list/stream", get(stream))
         .route("/shopping-list/generate", post(generate))
         .route("/shopping-list/reorder", post(reorder))
         .route("/shopping-list/items", post(add))
@@ -159,6 +175,29 @@ async fn list(user: AuthUser, State(state): State<ShoppingListState>) -> impl In
     }
 }
 
+/// `GET /shopping-list/stream` — flux SSE de synchronisation temps réel.
+///
+/// Garde la connexion ouverte et émet un événement `changed` chaque fois qu'une
+/// écriture touche la liste du foyer (par soi-même ou par l'autre personne). Le
+/// client réagit en relisant `GET /shopping-list` : le flux ne transporte pas
+/// le détail du changement, seulement le signal — la liste reste la seule
+/// source de vérité, donc pas de divergence possible.
+///
+/// Un `keep-alive` régulier maintient la connexion vivante à travers les proxys
+/// et permet au navigateur de détecter une coupure pour se reconnecter seul.
+async fn stream(
+    user: AuthUser,
+    State(state): State<ShoppingListState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let receiver = state.notifier.subscribe(user.household_id());
+    // Chaque signal (ou retard `Lagged`) devient un `changed` : dans les deux
+    // cas le client doit resynchroniser. `Event::data` est requis pour que
+    // `EventSource` livre l'événement.
+    let stream = BroadcastStream::new(receiver)
+        .map(|_| Ok(Event::default().event("changed").data("1")));
+    Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
+}
+
 /// `POST /shopping-list/generate` — (re)génère les lignes depuis le calendrier.
 ///
 /// Idempotent : les lignes générées sont remplacées en bloc, les ajouts
@@ -183,6 +222,7 @@ async fn generate(
 
     match response {
         GenerateListResponse::Generated(items) => {
+            state.notifier.notify(user.household_id());
             (StatusCode::OK, Json(views(items))).into_response()
         }
         GenerateListResponse::InvalidRange => invalid("plage invalide (from après to)".to_owned()),
@@ -204,7 +244,10 @@ async fn reorder(
         })
         .await;
     match response {
-        ReorderResponse::Reordered => StatusCode::NO_CONTENT.into_response(),
+        ReorderResponse::Reordered => {
+            state.notifier.notify(user.household_id());
+            StatusCode::NO_CONTENT.into_response()
+        }
         ReorderResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
@@ -225,6 +268,7 @@ async fn add(
         .await;
     match response {
         AddItemResponse::Added(item) => {
+            state.notifier.notify(user.household_id());
             (StatusCode::CREATED, Json(ItemView::from(item))).into_response()
         }
         AddItemResponse::Invalid(message) => invalid(message),
@@ -251,6 +295,7 @@ async fn update(
         .await;
     match response {
         UpdateItemResponse::Updated(item) => {
+            state.notifier.notify(user.household_id());
             (StatusCode::OK, Json(ItemView::from(item))).into_response()
         }
         UpdateItemResponse::NotFound => StatusCode::NOT_FOUND.into_response(),
@@ -272,7 +317,10 @@ async fn remove(
         })
         .await;
     match response {
-        DeleteItemResponse::Deleted => StatusCode::NO_CONTENT.into_response(),
+        DeleteItemResponse::Deleted => {
+            state.notifier.notify(user.household_id());
+            StatusCode::NO_CONTENT.into_response()
+        }
         DeleteItemResponse::NotFound => StatusCode::NOT_FOUND.into_response(),
         DeleteItemResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
@@ -289,7 +337,10 @@ async fn clear_checked(
         })
         .await;
     match response {
-        ClearCheckedResponse::Cleared(_) => StatusCode::NO_CONTENT.into_response(),
+        ClearCheckedResponse::Cleared(_) => {
+            state.notifier.notify(user.household_id());
+            StatusCode::NO_CONTENT.into_response()
+        }
         ClearCheckedResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }

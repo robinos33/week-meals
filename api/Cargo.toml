@@ -35,6 +35,9 @@ shopping-list = { path = "shopping-list" }
 # Dépendances externes partagées
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
+# Adapte un `broadcast::Receiver` en `Stream` pour le flux SSE de la liste
+# de courses (synchro temps réel). Feature `sync` = wrappers des canaux Tokio.
+tokio-stream = { version = "0.1", features = ["sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tower = "0.5"

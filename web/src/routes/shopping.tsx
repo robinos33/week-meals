@@ -18,6 +18,7 @@ import {
   sameCombo,
   useReorderItems,
   useShoppingList,
+  useShoppingListStream,
   useUpdateItem,
   type ShoppingItem,
   type Unit,
@@ -31,6 +32,7 @@ import "./screens.css";
  */
 export function ShoppingScreen() {
   const query = useShoppingList();
+  const { live } = useShoppingListStream();
   const addItem = useAddItem();
   const updateItem = useUpdateItem();
   const clearChecked = useClearChecked();
@@ -43,7 +45,16 @@ export function ShoppingScreen() {
   return (
     <section>
       <header className="screen__header">
-        <h1 className="screen__title">Courses</h1>
+        <h1 className="screen__title">
+          Courses
+          <span
+            className="sync-dot"
+            data-live={live}
+            title={live ? "Synchronisé en direct" : "Reconnexion…"}
+            aria-label={live ? "Synchronisé en direct" : "Reconnexion en cours"}
+            role="status"
+          />
+        </h1>
         {done.length > 0 && (
           <button
             className="btn btn--danger-ghost"
