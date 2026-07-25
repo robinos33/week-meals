@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { THEME_ICONS } from "../components/theme-icons";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
@@ -7,6 +7,12 @@ import { authApi, type DeviceInfo } from "../api/auth";
 import { useHouseholdSettings, useSetWeekStartDay } from "../api/household";
 import type { RecipeView } from "../api/recipes";
 import { backupFilename, buildBackup, downloadBackup } from "../lib/backup";
+import {
+  BackupImportError,
+  importSummary,
+  parseBackup,
+  planImport,
+} from "../lib/backup-import";
 import "./screens.css";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -42,6 +48,11 @@ export function SettingsScreen() {
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupBusy, setBackupBusy] = useState(false);
 
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
   const backup = async () => {
     setBackupError(null);
     setBackupBusy(true);
@@ -53,6 +64,48 @@ export function SettingsScreen() {
     } finally {
       setBackupBusy(false);
     }
+  };
+
+  const importBackup = async (file: File) => {
+    setImportError(null);
+    setImportResult(null);
+    setImportBusy(true);
+    try {
+      const { recipes, invalidCount } = parseBackup(await file.text());
+      const existing = await api.get<RecipeView[]>("/recipes");
+      const { toImport, duplicateCount } = planImport(
+        recipes,
+        existing.map((r) => r.title),
+      );
+
+      let imported = 0;
+      let failed = 0;
+      for (const recipe of toImport) {
+        try {
+          await api.post<RecipeView>("/recipes", recipe);
+          imported++;
+        } catch {
+          failed++;
+        }
+      }
+      if (imported > 0) await queryClient.invalidateQueries({ queryKey: ["recipes"] });
+      setImportResult(importSummary({ imported, duplicateCount, invalidCount, failed }));
+    } catch (err) {
+      setImportError(
+        err instanceof BackupImportError
+          ? err.message
+          : "L'import a échoué. Vérifiez votre connexion et réessayez.",
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const onImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    // Réinitialise l'input pour permettre de réimporter le même fichier.
+    event.target.value = "";
+    if (file) await importBackup(file);
   };
 
   const revoke = async (id: string) => {
@@ -171,6 +224,37 @@ export function SettingsScreen() {
         {backupError && (
           <p className="settings-error" role="alert">
             {backupError}
+          </p>
+        )}
+
+        <button
+          className="btn btn--block"
+          type="button"
+          onClick={() => fileInput.current?.click()}
+          disabled={importBusy}
+          style={{ marginTop: "1rem" }}
+        >
+          {importBusy ? "Import en cours…" : "Importer des recettes (JSON)"}
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          onChange={onImportFile}
+        />
+        <p className="muted" style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
+          Ajoute les recettes d'un fichier de sauvegarde. Les recettes déjà
+          présentes (même titre) sont ignorées.
+        </p>
+        {importResult && (
+          <p className="settings-note" role="status">
+            {importResult}
+          </p>
+        )}
+        {importError && (
+          <p className="settings-error" role="alert">
+            {importError}
           </p>
         )}
       </div>

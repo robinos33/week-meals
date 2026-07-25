@@ -900,3 +900,11 @@
   font-size: 0.85rem;
   color: var(--color-danger);
 }
+
+/* Compte-rendu neutre (p. ex. bilan d'import de recettes). */
+.settings-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
