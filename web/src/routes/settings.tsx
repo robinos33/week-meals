@@ -2,9 +2,11 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { THEME_ICONS } from "../components/theme-icons";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
-import { ApiError } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { authApi, type DeviceInfo } from "../api/auth";
 import { useHouseholdSettings, useSetWeekStartDay } from "../api/household";
+import type { RecipeView } from "../api/recipes";
+import { backupFilename, buildBackup, downloadBackup } from "../lib/backup";
 import "./screens.css";
 
 const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
@@ -37,6 +39,21 @@ export function SettingsScreen() {
   });
 
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+
+  const backup = async () => {
+    setBackupError(null);
+    setBackupBusy(true);
+    try {
+      const recipes = await api.get<RecipeView[]>("/recipes");
+      downloadBackup(buildBackup(recipes), backupFilename());
+    } catch {
+      setBackupError("La sauvegarde a échoué. Vérifiez votre connexion et réessayez.");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   const revoke = async (id: string) => {
     if (!window.confirm("Révoquer cet appareil ? Il devra être ré-enrôlé.")) return;
@@ -132,6 +149,28 @@ export function SettingsScreen() {
         {revokeError && (
           <p className="settings-error" role="alert">
             {revokeError}
+          </p>
+        )}
+      </div>
+
+      <div className="card settings-section">
+        <h2>Sauvegarde</h2>
+        <button
+          className="btn btn--primary btn--block"
+          type="button"
+          onClick={backup}
+          disabled={backupBusy}
+        >
+          {backupBusy ? "Préparation…" : "Sauvegarder mes recettes (JSON)"}
+        </button>
+        <p className="muted" style={{ marginTop: "0.6rem", fontSize: "0.85rem" }}>
+          Télécharge toutes vos recettes sur cet appareil. Les photos ne sont
+          conservées que si elles ont un lien web ; celles hébergées sur le
+          serveur ne sont pas incluses.
+        </p>
+        {backupError && (
+          <p className="settings-error" role="alert">
+            {backupError}
           </p>
         )}
       </div>
