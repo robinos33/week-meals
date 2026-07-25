@@ -38,8 +38,11 @@ export interface RecipeBackup {
   recipes: BackupRecipe[];
 }
 
-/** Ne garde la photo que si c'est un lien web absolu, sinon `null`. */
-function webPhoto(photo: string | null): string | null {
+/**
+ * Ne garde la photo que si c'est un lien web absolu (http/https), sinon `null`.
+ * Partagé avec l'import (#73) pour appliquer la même règle des deux côtés.
+ */
+export function webPhoto(photo: string | null): string | null {
   return photo && /^https?:\/\//i.test(photo) ? photo : null;
 }
 
