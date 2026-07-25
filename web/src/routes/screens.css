@@ -380,12 +380,25 @@
   gap: 0.3rem;
 }
 
-/* Ligne épurée façon Keep : ni fond ni bordure, juste des lignes espacées. */
+/* Ligne épurée façon Keep : ni fond ni bordure, juste des lignes espacées.
+   `user-select: none` (+ callout iOS) : sans ça, un glissement tactile via la
+   poignée se termine en sélection de texte de l'article sur iOS. */
 .shopping-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding: 0 0.15rem;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Sauf l'édition inline, où l'on veut pouvoir sélectionner/éditer le texte. */
+.shopping-row--editing,
+.inline-edit input,
+.inline-edit textarea {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Poignée de déplacement (façon Keep) : `touch-action: none` pour que le
