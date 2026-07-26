@@ -139,21 +139,20 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
             .await
             .map_err(backend)?;
 
-        // Les lignes générées occupent les positions `0..n` ; on décale les
-        // ajouts manuels restants pour qu'ils s'affichent en dessous, sans
-        // collision (leur ordre relatif est préservé).
-        let shift = i32::try_from(items.len()).unwrap_or(i32::MAX);
-        sqlx::query(
-            "update shopping_list_items set position = position + ? where household_id = ?",
+        // Les ajouts manuels (condiments ajoutés à la main…) restent en tête de
+        // liste : les lignes générées s'insèrent *en dessous*, à la suite de la
+        // plus haute position manuelle restante. Leur ordre relatif (celui du
+        // service de conversion) est préservé.
+        let base: i32 = sqlx::query_scalar(
+            "select coalesce(max(position) + 1, 0) from shopping_list_items where household_id = ?",
         )
-        .bind(shift)
         .bind(household_id.as_uuid())
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await
         .map_err(backend)?;
 
         for (index, item) in items.iter().enumerate() {
-            let position = i32::try_from(index).unwrap_or(i32::MAX);
+            let position = base.saturating_add(i32::try_from(index).unwrap_or(i32::MAX));
             sqlx::query(
                 "insert into shopping_list_items \
                  (id, household_id, name, amount, unit, category, checked, generated, position) \
@@ -176,12 +175,14 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
     }
 
     async fn add(&self, item: &ShoppingItem) -> Result<(), RepositoryError> {
-        // Position calculée en base : la ligne s'ajoute en fin de liste.
+        // Position calculée en base : la ligne s'ajoute **en tête** de liste
+        // (position la plus basse − 1), pour qu'un ajout manuel — souvent un
+        // oubli ou un condiment de dernière minute — saute aux yeux.
         sqlx::query(
             "insert into shopping_list_items \
              (id, household_id, name, amount, unit, category, checked, generated, position) \
              values (?, ?, ?, ?, ?, ?, ?, ?, \
-               coalesce((select max(position) + 1 from shopping_list_items where household_id = ?), 0))",
+               coalesce((select min(position) - 1 from shopping_list_items where household_id = ?), 0))",
         )
         .bind(item.id.as_uuid())
         .bind(item.household_id.as_uuid())
