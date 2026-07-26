@@ -8,7 +8,7 @@
 //! [issue #9]: https://github.com/robinos33/week-meals/issues/9
 //! [plan.md — Modèle métier]: ../../../docs/plan.md
 
-use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError, Unit};
+use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError, Unit, DEFAULT_SERVINGS};
 
 /// Un ingrédient d'une recette : un nom libre et une [`Quantity`].
 ///
@@ -56,6 +56,11 @@ pub struct Recipe {
     pub ingredients: Vec<RecipeIngredient>,
     /// Étapes de préparation, dans l'ordre.
     pub steps: Vec<String>,
+    /// Nombre de personnes auquel correspondent les quantités d'ingrédients.
+    /// Base historique : 2. Sert de dénominateur à la mise à l'échelle de la
+    /// liste de courses et de l'affichage « pour X personnes ». Posé à `2` par
+    /// les constructeurs ; ajusté via [`Recipe::with_servings`].
+    pub servings: u32,
     /// Nombre de fois où la recette a été cuisinée (#58). Incrémenté à la
     /// génération de la liste de courses, jamais saisi par l'utilisateur : les
     /// constructeurs le posent à `0`, la persistance l'injecte via
@@ -138,6 +143,7 @@ impl Recipe {
             cook_time_min,
             ingredients,
             steps,
+            servings: DEFAULT_SERVINGS,
             cooked_count: 0,
         })
     }
@@ -148,6 +154,16 @@ impl Recipe {
     #[must_use]
     pub fn with_cooked_count(mut self, cooked_count: u32) -> Self {
         self.cooked_count = cooked_count;
+        self
+    }
+
+    /// Fixe le nombre de personnes de la recette. Une valeur nulle est ramenée
+    /// à [`DEFAULT_SERVINGS`] : la mise à l'échelle divise par ce nombre, il ne
+    /// peut donc jamais être zéro. La validation « > 0 » de l'entrée utilisateur
+    /// est faite en amont (application) pour un message clair.
+    #[must_use]
+    pub fn with_servings(mut self, servings: u32) -> Self {
+        self.servings = servings.max(1);
         self
     }
 }
@@ -279,7 +295,7 @@ pub struct ScrapedIngredient {
 /// Une recette extraite d'une page web : un **brouillon à relire**, à la forme
 /// du formulaire (mêmes champs que `RecipeFields`). Jamais persisté tel quel —
 /// il prérempli un formulaire que l'utilisateur corrige avant d'enregistrer.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScrapedRecipe {
     /// Titre.
     pub title: String,
@@ -293,6 +309,25 @@ pub struct ScrapedRecipe {
     pub ingredients: Vec<ScrapedIngredient>,
     /// Étapes de préparation, ordonnées.
     pub steps: Vec<String>,
+    /// Nombre de personnes de la recette **après import**. Les quantités du
+    /// site sont ramenées à cette base (resize à [`DEFAULT_SERVINGS`] via le
+    /// `recipeYield`, cf. infrastructure du scraper), pour que toutes les
+    /// recettes partagent la même base.
+    pub servings: u32,
+}
+
+impl Default for ScrapedRecipe {
+    fn default() -> Self {
+        Self {
+            title: String::new(),
+            prep_time_min: None,
+            cook_time_min: None,
+            photo: None,
+            ingredients: Vec::new(),
+            steps: Vec::new(),
+            servings: DEFAULT_SERVINGS,
+        }
+    }
 }
 
 /// Échec d'un import par URL. Les messages sont destinés à l'utilisateur.

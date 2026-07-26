@@ -19,6 +19,9 @@ pub struct PlaceMealCommand {
     pub slot: Slot,
     /// Recette à placer.
     pub recipe_id: RecipeId,
+    /// Nombre de convives pour ce créneau (base de la mise à l'échelle des
+    /// courses). Défaut applicatif : `kernel::DEFAULT_SERVINGS`.
+    pub servings: u32,
 }
 
 /// Résultat d'un placement.
@@ -51,6 +54,7 @@ impl<'a> PlaceMealHandler<'a> {
             command.date,
             command.slot,
             command.recipe_id,
+            command.servings,
         );
         match self.plan.set(&meal).await {
             Ok(()) => PlaceMealResponse::Placed,
@@ -128,6 +132,7 @@ mod tests {
                 date: date("2026-07-13"),
                 slot: Slot::Dinner,
                 recipe_id: recipe,
+                servings: 2,
             })
             .await;
         assert_eq!(placed, PlaceMealResponse::Placed);
@@ -156,6 +161,7 @@ mod tests {
                 date: date("2026-07-13"),
                 slot: Slot::Lunch,
                 recipe_id: RecipeId::new(),
+                servings: 2,
             })
             .await;
         let second = RecipeId::new();
@@ -165,6 +171,7 @@ mod tests {
                 date: date("2026-07-13"),
                 slot: Slot::Lunch,
                 recipe_id: second,
+                servings: 2,
             })
             .await;
 

@@ -16,6 +16,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { api, eventSource } from "./client";
+import { formatAmount, formatDecimal } from "../lib/quantity";
 
 /** Unités acceptées par l'API (mêmes que les recettes). */
 export const UNITS = ["g", "kg", "ml", "l", "piece"] as const;
@@ -345,7 +346,7 @@ export function adjustQuantity(amount: number, unit: Unit, direction: 1 | -1): n
 
 /** Quantité formatée pour l'affichage (`3 pièce(s)`, `250 g`). */
 export function formatQuantity(item: ShoppingItem): string {
-  // Les quantités sont des flottants côté API : on évite « 250.0 g ».
-  const amount = Number.isInteger(item.amount) ? item.amount : Number(item.amount.toFixed(2));
+  // Fractions (½, 1½…) pour les pièces ; décimal pour masses et volumes.
+  const amount = item.unit === "piece" ? formatAmount(item.amount) : formatDecimal(item.amount);
   return `${amount} ${UNIT_LABELS[item.unit]}`;
 }

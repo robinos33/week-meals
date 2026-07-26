@@ -25,6 +25,7 @@ import {
   type Unit,
 } from "../api/shopping-list";
 import { foodEmoji } from "../lib/food-emoji";
+import { parseAmount } from "../lib/quantity";
 import "./screens.css";
 
 /** Libellé (title + a11y) du point de synchro selon l'état. */
@@ -240,7 +241,7 @@ function QuantityStepper({
   ariaLabel?: string;
 }) {
   function step(direction: 1 | -1) {
-    const current = Number(value.replace(",", ".")) || 0;
+    const current = parseAmount(value) ?? 0;
     onChange(String(adjustQuantity(current, unit, direction)));
   }
 
@@ -255,12 +256,11 @@ function QuantityStepper({
         −
       </button>
       <input
-        type="number"
+        type="text"
         className="stepper__value"
         aria-label={ariaLabel}
         inputMode="decimal"
-        min="0"
-        step="any"
+        placeholder="1/2"
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -299,10 +299,11 @@ function QuickAdd({
   const [amount, setAmount] = useState("1");
   const [unit, setUnit] = useState<Unit>("piece");
 
-  // Candidat courant (null tant que la saisie n'est pas valide).
-  const parsed = Number(amount.replace(",", "."));
+  // Candidat courant (null tant que la saisie n'est pas valide). La quantité
+  // accepte les fractions (« 1/2 », « 1 1/2 », « 0,5 »).
+  const parsed = parseAmount(amount);
   const candidate =
-    name.trim() && Number.isFinite(parsed) && parsed > 0
+    name.trim() && parsed != null
       ? { name: name.trim(), amount: parsed, unit }
       : null;
 
@@ -467,8 +468,8 @@ function InlineEdit({
 
   function save(event: FormEvent) {
     event.preventDefault();
-    const parsed = Number(amount.replace(",", "."));
-    if (!name.trim() || !Number.isFinite(parsed) || parsed <= 0) return;
+    const parsed = parseAmount(amount);
+    if (!name.trim() || parsed == null) return;
     onSave({ name: name.trim(), amount: parsed, unit });
   }
 

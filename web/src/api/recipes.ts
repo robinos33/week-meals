@@ -38,6 +38,8 @@ export interface RecipeView {
   cook_time_min: number | null;
   ingredients: Ingredient[];
   steps: string[];
+  /** Nombre de personnes auquel correspondent les quantités (base). */
+  servings: number;
   /** Nombre de fois cuisinée (#58) : « Cuisiné X fois » et podium 🥇🥈🥉. */
   cooked_count: number;
 }
@@ -50,6 +52,8 @@ export interface RecipeInput {
   photo: string | null;
   ingredients: Ingredient[];
   steps: string[];
+  /** Nombre de personnes (base des quantités). */
+  servings: number;
 }
 
 /**

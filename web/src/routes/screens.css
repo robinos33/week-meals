@@ -281,6 +281,33 @@
   line-height: 1;
 }
 
+/* Sélecteur de personnes d'un créneau rempli (− 👥 N +). */
+.slot__servings {
+  display: inline-flex;
+  align-items: stretch;
+  height: 1.75rem;
+  margin-top: 0.4rem;
+}
+
+.slot__servings .stepper__btn {
+  width: 1.9rem;
+  font-size: 1.05rem;
+}
+
+.slot__servings-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.8rem;
+  border: 1px solid var(--color-border);
+  border-inline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* --- Feuille de sélection (bottom sheet) ---------------------------------- */
 
 .sheet-backdrop {
@@ -871,6 +898,43 @@
 .recipe-detail__section {
   font-size: 1.2rem;
   margin: 1.5rem 0 0.6rem;
+}
+
+/* En-tête « Ingrédients » + sélecteur de personnes sur une ligne. */
+.recipe-detail__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+/* Sélecteur de personnes (fiche recette et créneau) : boutons − / + autour
+   d'une valeur, réutilise le style des boutons du stepper. */
+.servings-picker {
+  display: inline-flex;
+  align-items: stretch;
+  height: 2rem;
+  flex: 0 0 auto;
+}
+
+.servings-picker__value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-border);
+  border-inline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.servings-picker .stepper__btn {
+  font-size: 1.1rem;
 }
 
 .ingredient-list {

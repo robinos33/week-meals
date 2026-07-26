@@ -7,6 +7,7 @@ import {
   useRecipeSummaries,
   useSetEntry,
   useWeekPlan,
+  type MealPlanEntry,
   type MealSlot,
   type RecipeSummary,
 } from "../api/meal-plan";
@@ -79,14 +80,16 @@ export function WeekScreen() {
   }, [recipesQuery.data]);
 
   const planBySlot = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const entry of plan.data ?? []) map.set(`${entry.date}|${entry.slot}`, entry.recipe_id);
+    const map = new Map<string, MealPlanEntry>();
+    for (const entry of plan.data ?? []) map.set(`${entry.date}|${entry.slot}`, entry);
     return map;
   }, [plan.data]);
 
   function choose(recipeId: string) {
     if (!picking) return;
-    setEntry.mutate({ ...picking, recipe_id: recipeId });
+    // Un créneau tout juste rempli l'est pour 2 personnes par défaut ; ajustable
+    // ensuite depuis le créneau.
+    setEntry.mutate({ ...picking, recipe_id: recipeId, servings: 2 });
     setPicking(null);
   }
 
@@ -149,9 +152,16 @@ export function WeekScreen() {
           </div>
           <div className="week-day__slots">
             {SLOTS.map(({ slot, label }) => {
-              const recipeId = planBySlot.get(`${day.date}|${slot}`);
-              const recipe = recipeId ? recipesById.get(recipeId) : undefined;
-              if (recipeId) {
+              const entry = planBySlot.get(`${day.date}|${slot}`);
+              const recipe = entry ? recipesById.get(entry.recipe_id) : undefined;
+              if (entry) {
+                const setServings = (servings: number) =>
+                  setEntry.mutate({
+                    date: day.date,
+                    slot,
+                    recipe_id: entry.recipe_id,
+                    servings,
+                  });
                 return (
                   <div className="slot slot--filled" key={slot}>
                     <span className="slot__label">{label}</span>
@@ -167,6 +177,26 @@ export function WeekScreen() {
                         onClick={() => clearEntry.mutate({ date: day.date, slot })}
                       >
                         ×
+                      </button>
+                    </div>
+                    <div className="slot__servings" role="group" aria-label="Nombre de personnes">
+                      <button
+                        type="button"
+                        className="stepper__btn"
+                        aria-label="Moins de personnes"
+                        disabled={entry.servings <= 1}
+                        onClick={() => setServings(Math.max(1, entry.servings - 1))}
+                      >
+                        −
+                      </button>
+                      <span className="slot__servings-value">👥 {entry.servings}</span>
+                      <button
+                        type="button"
+                        className="stepper__btn"
+                        aria-label="Plus de personnes"
+                        onClick={() => setServings(entry.servings + 1)}
+                      >
+                        +
                       </button>
                     </div>
                   </div>

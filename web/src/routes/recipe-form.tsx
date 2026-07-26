@@ -72,6 +72,9 @@ function RecipeForm({
   const [cook, setCook] = useState(
     initial?.cook_time_min != null ? String(initial.cook_time_min) : "",
   );
+  const [servings, setServings] = useState(
+    initial?.servings != null ? String(initial.servings) : "2",
+  );
   const [photo, setPhoto] = useState(initial?.photo ?? "");
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -113,6 +116,7 @@ function RecipeForm({
         setTitle(draft.title);
         setPrep(draft.prep_time_min != null ? String(draft.prep_time_min) : "");
         setCook(draft.cook_time_min != null ? String(draft.cook_time_min) : "");
+        setServings(String(draft.servings ?? 2));
         if (draft.photo) setPhoto(draft.photo);
         setIngredients(
           draft.ingredients.length
@@ -160,11 +164,13 @@ function RecipeForm({
 
   function submit(event: FormEvent) {
     event.preventDefault();
+    const parsedServings = Math.round(Number(servings));
     const input: RecipeInput = {
       title: title.trim(),
       prep_time_min: toMinutes(prep),
       cook_time_min: toMinutes(cook),
       photo: photo.trim() || null,
+      servings: Number.isFinite(parsedServings) && parsedServings > 0 ? parsedServings : 2,
       // On ne garde que les lignes exploitables : un nom et une quantité > 0.
       ingredients: ingredients
         .map((r) => ({ name: r.name.trim(), amount: Number(r.amount), unit: r.unit }))
@@ -233,6 +239,23 @@ function RecipeForm({
             required
             autoFocus
           />
+        </div>
+
+        <div className="field">
+          <label htmlFor="servings">Nombre de personnes</label>
+          <input
+            id="servings"
+            className="input input--amount"
+            type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
+            value={servings}
+            onChange={(e) => setServings(e.target.value)}
+          />
+          <p className="field-hint">
+            Les quantités saisies correspondent à ce nombre de personnes.
+          </p>
         </div>
 
         <div className="field-row">

@@ -7,12 +7,19 @@ import {
   useRecipe,
   type Ingredient,
 } from "../api/recipes";
+import { formatAmount, formatDecimal } from "../lib/quantity";
 import "./screens.css";
 
-/** Libellé lisible d'une quantité (« 600 g », « 3 pièce(s) »). */
-function quantityLabel(ingredient: Ingredient): string {
+/**
+ * Libellé lisible d'une quantité mise à l'échelle (« 600 g », « ½ pièce(s) »).
+ * `factor` = personnes voulues / base de la recette. Fractions pour les pièces,
+ * décimal pour masses et volumes.
+ */
+function quantityLabel(ingredient: Ingredient, factor: number): string {
   const unit = UNITS.find((u) => u.value === ingredient.unit)?.label ?? ingredient.unit;
-  return `${ingredient.amount} ${unit}`;
+  const scaled = ingredient.amount * factor;
+  const amount = ingredient.unit === "piece" ? formatAmount(scaled) : formatDecimal(scaled);
+  return `${amount} ${unit}`;
 }
 
 /** Écran détail d'une recette (`/recipes/$recipeId`). */
@@ -22,6 +29,10 @@ export function RecipeDetailScreen() {
   const query = useRecipe(recipeId);
   const remove = useDeleteRecipe(recipeId);
   const [confirming, setConfirming] = useState(false);
+  // Nombre de convives choisi pour l'affichage des quantités (null = base de la
+  // recette, tant que l'utilisateur n'a pas ajusté). Purement local : rien
+  // n'est persisté, c'est une aide à la préparation.
+  const [people, setPeople] = useState<number | null>(null);
 
   if (query.isLoading) {
     return <p className="muted">Chargement…</p>;
@@ -41,6 +52,8 @@ export function RecipeDetailScreen() {
 
   const recipe = query.data;
   const time = totalTime(recipe);
+  const effectivePeople = people ?? recipe.servings;
+  const factor = effectivePeople / recipe.servings;
 
   function onDelete() {
     remove.mutate(undefined, {
@@ -73,12 +86,36 @@ export function RecipeDetailScreen() {
         )}
       </p>
 
-      <h2 className="recipe-detail__section">Ingrédients</h2>
+      <div className="recipe-detail__section-head">
+        <h2 className="recipe-detail__section">Ingrédients</h2>
+        <div className="servings-picker" role="group" aria-label="Nombre de personnes">
+          <button
+            type="button"
+            className="stepper__btn"
+            aria-label="Moins de personnes"
+            disabled={effectivePeople <= 1}
+            onClick={() => setPeople(Math.max(1, effectivePeople - 1))}
+          >
+            −
+          </button>
+          <span className="servings-picker__value">
+            👥 {effectivePeople} pers.
+          </span>
+          <button
+            type="button"
+            className="stepper__btn"
+            aria-label="Plus de personnes"
+            onClick={() => setPeople(effectivePeople + 1)}
+          >
+            +
+          </button>
+        </div>
+      </div>
       {recipe.ingredients.length ? (
         <ul className="ingredient-list">
           {recipe.ingredients.map((ingredient, index) => (
             <li key={index}>
-              <span className="ingredient-list__qty">{quantityLabel(ingredient)}</span>
+              <span className="ingredient-list__qty">{quantityLabel(ingredient, factor)}</span>
               <span>{ingredient.name}</span>
             </li>
           ))}

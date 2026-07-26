@@ -80,6 +80,7 @@ mod tests {
                 unit: Unit::G,
             }],
             steps: vec!["Émincer.".to_owned()],
+            servings: 2,
         }
     }
 

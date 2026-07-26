@@ -6,7 +6,7 @@
 //! erreurs SQLx deviennent [`RepositoryError::Backend`].
 
 use chrono::NaiveDate;
-use kernel::{HouseholdId, RecipeId, RepositoryError};
+use kernel::{HouseholdId, RecipeId, RepositoryError, DEFAULT_SERVINGS};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
@@ -28,6 +28,7 @@ struct MealRow {
     meal_date: NaiveDate,
     slot: String,
     recipe_id: Uuid,
+    servings: i32,
 }
 
 impl MealRow {
@@ -35,11 +36,18 @@ impl MealRow {
         let slot = Slot::parse(&self.slot).ok_or_else(|| {
             RepositoryError::Backend(format!("unknown stored slot: {}", self.slot))
         })?;
+        // `servings` est contraint `> 0` en base ; un zéro/négatif serait une
+        // corruption — on retombe sur la base par défaut.
+        let servings = u32::try_from(self.servings)
+            .ok()
+            .filter(|&s| s > 0)
+            .unwrap_or(DEFAULT_SERVINGS);
         Ok(PlannedMeal::new(
             household_id,
             self.meal_date,
             slot,
             RecipeId::from(self.recipe_id),
+            servings,
         ))
     }
 }
@@ -94,10 +102,11 @@ impl MealPlanRepository for SqlxMealPlanRepository {
             return Err(RepositoryError::NotFound);
         }
         sqlx::query(
-            "insert into meal_plan (household_id, meal_date, slot, recipe_id) \
-             values (?, ?, ?, ?) \
+            "insert into meal_plan (household_id, meal_date, slot, recipe_id, servings) \
+             values (?, ?, ?, ?, ?) \
              on conflict (household_id, meal_date, slot) \
-             do update set recipe_id = excluded.recipe_id, updated_at = datetime('now'), \
+             do update set recipe_id = excluded.recipe_id, servings = excluded.servings, \
+                 updated_at = datetime('now'), \
                  counted_at = case \
                      when meal_plan.recipe_id is not excluded.recipe_id \
                      then null else meal_plan.counted_at end",
@@ -106,6 +115,7 @@ impl MealPlanRepository for SqlxMealPlanRepository {
         .bind(meal.date)
         .bind(meal.slot.as_str())
         .bind(meal.recipe_id.as_uuid())
+        .bind(i32::try_from(meal.servings).unwrap_or(i32::MAX))
         .execute(&self.pool)
         .await
         .map_err(backend)?;
@@ -141,7 +151,7 @@ impl MealPlanRepository for SqlxMealPlanRepository {
         end: NaiveDate,
     ) -> Result<Vec<PlannedMeal>, RepositoryError> {
         let rows: Vec<MealRow> = sqlx::query_as(
-            "select meal_date, slot, recipe_id from meal_plan \
+            "select meal_date, slot, recipe_id, servings from meal_plan \
              where household_id = ? and meal_date between ? and ? \
              order by meal_date, slot",
         )

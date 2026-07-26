@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError, Unit};
+use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError, Unit, DEFAULT_SERVINGS};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
@@ -78,6 +78,7 @@ struct RecipeRow {
     photo: Option<String>,
     prep_time_min: Option<i32>,
     cook_time_min: Option<i32>,
+    servings: i32,
     cooked_count: i32,
 }
 
@@ -114,6 +115,13 @@ fn assemble(
     // `cooked_count` est contraint `>= 0` en base ; un négatif serait une
     // corruption — on retombe sur `0` plutôt que de paniquer.
     let cooked_count = u32::try_from(row.cooked_count).unwrap_or(0);
+    // `servings` est contraint `> 0` en base ; un zéro/négatif serait une
+    // corruption — on retombe sur la base par défaut plutôt que de diviser par
+    // zéro à la mise à l'échelle.
+    let servings = u32::try_from(row.servings)
+        .ok()
+        .filter(|&s| s > 0)
+        .unwrap_or(DEFAULT_SERVINGS);
     Recipe::from_parts(
         RecipeId::from(row.id),
         HouseholdId::from(row.household_id),
@@ -124,7 +132,11 @@ fn assemble(
         ingredients,
         steps,
     )
-    .map(|recipe| recipe.with_cooked_count(cooked_count))
+    .map(|recipe| {
+        recipe
+            .with_cooked_count(cooked_count)
+            .with_servings(servings)
+    })
     .map_err(|e| RepositoryError::Backend(format!("invalid stored recipe: {e}")))
 }
 
@@ -258,8 +270,8 @@ impl RecipeRepository for SqlxRecipeRepository {
         let mut tx = self.pool.begin().await.map_err(backend)?;
         sqlx::query(
             "insert into recipes \
-             (id, household_id, title, title_norm, photo, prep_time_min, cook_time_min) \
-             values (?, ?, ?, ?, ?, ?, ?)",
+             (id, household_id, title, title_norm, photo, prep_time_min, cook_time_min, servings) \
+             values (?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(recipe.id.as_uuid())
         .bind(recipe.household_id.as_uuid())
@@ -268,6 +280,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         .bind(recipe.photo.as_deref())
         .bind(minutes_to_sql(recipe.prep_time_min))
         .bind(minutes_to_sql(recipe.cook_time_min))
+        .bind(i32::try_from(recipe.servings).unwrap_or(i32::MAX))
         .execute(&mut *tx)
         .await
         .map_err(backend)?;
@@ -281,7 +294,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         id: RecipeId,
     ) -> Result<Option<Recipe>, RepositoryError> {
         let row: Option<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min, cooked_count \
+            "select id, household_id, title, photo, prep_time_min, cook_time_min, servings, cooked_count \
              from recipes where id = ? and household_id = ?",
         )
         .bind(id.as_uuid())
@@ -298,7 +311,7 @@ impl RecipeRepository for SqlxRecipeRepository {
 
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<Recipe>, RepositoryError> {
         let rows: Vec<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min, cooked_count \
+            "select id, household_id, title, photo, prep_time_min, cook_time_min, servings, cooked_count \
              from recipes where household_id = ? order by title_norm",
         )
         .bind(household_id.as_uuid())
@@ -317,7 +330,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         // « creme » trouvent « Crème brûlée » (cf. ADR-0008).
         let pattern = format!("%{}%", escape_like(&normalize_title(query)));
         let rows: Vec<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min, cooked_count \
+            "select id, household_id, title, photo, prep_time_min, cook_time_min, servings, cooked_count \
              from recipes where household_id = ? and title_norm like ? escape '\\' \
              order by title_norm",
         )
@@ -336,7 +349,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         // `where` ensuite.
         let result = sqlx::query(
             "update recipes set title = ?, title_norm = ?, photo = ?, prep_time_min = ?, \
-             cook_time_min = ?, updated_at = datetime('now') \
+             cook_time_min = ?, servings = ?, updated_at = datetime('now') \
              where id = ? and household_id = ?",
         )
         .bind(&recipe.title)
@@ -344,6 +357,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         .bind(recipe.photo.as_deref())
         .bind(minutes_to_sql(recipe.prep_time_min))
         .bind(minutes_to_sql(recipe.cook_time_min))
+        .bind(i32::try_from(recipe.servings).unwrap_or(i32::MAX))
         .bind(recipe.id.as_uuid())
         .bind(recipe.household_id.as_uuid())
         .execute(&mut *tx)

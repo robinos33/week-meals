@@ -15,3 +15,8 @@ mod repository;
 pub use ids::{DeviceId, HouseholdId, RecipeId, ShoppingItemId, UserId, DEMO_HOUSEHOLD_ID};
 pub use quantity::{Dimension, Quantity, QuantityError, Unit};
 pub use repository::RepositoryError;
+
+/// Nombre de personnes par défaut d'une recette et d'un créneau. Base
+/// historique de toutes les recettes ; dénominateur de la mise à l'échelle de
+/// la liste de courses (cf. migration `recipe_meal_servings`).
+pub const DEFAULT_SERVINGS: u32 = 2;

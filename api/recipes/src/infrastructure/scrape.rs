@@ -21,7 +21,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Duration;
 
-use kernel::Unit;
+use kernel::{Unit, DEFAULT_SERVINGS};
 use regex::Regex;
 use reqwest::redirect::Policy;
 use reqwest::Url;
@@ -274,7 +274,17 @@ fn is_recipe(value: &Value) -> bool {
 }
 
 /// Projette un nœud `Recipe` JSON-LD vers un brouillon.
+///
+/// Les sites publient les quantités « pour N personnes » (`recipeYield`). On
+/// ramène tout à [`DEFAULT_SERVINGS`] pour que toutes les recettes partagent la
+/// même base : sans ce resize, une recette « pour 6 » importée serait ensuite
+/// mise à l'échelle à tort par la liste de courses. Sans `recipeYield` lisible,
+/// on garde les quantités telles quelles en supposant la base par défaut.
 fn map_recipe(recipe: &Value) -> ScrapedRecipe {
+    let scale = parse_yield(recipe.get("recipeYield")).map_or(1.0, |yield_| {
+        f64::from(DEFAULT_SERVINGS) / f64::from(yield_)
+    });
+
     ScrapedRecipe {
         title: recipe
             .get("name")
@@ -299,11 +309,45 @@ fn map_recipe(recipe: &Value) -> ScrapedRecipe {
                     .iter()
                     .filter_map(Value::as_str)
                     .map(parse_ingredient)
+                    .map(|mut ingredient| {
+                        ingredient.amount = (ingredient.amount * scale).max(f64::MIN_POSITIVE);
+                        ingredient
+                    })
                     .collect()
             })
             .unwrap_or_default(),
         steps: extract_steps(recipe.get("recipeInstructions")),
+        servings: DEFAULT_SERVINGS,
     }
+}
+
+/// Extrait un nombre de parts de `recipeYield`, qui peut être un nombre
+/// (`4`), une chaîne (`"4"`, `"4 portions"`, `"Pour 4 personnes"`) ou un
+/// tableau de ces formes (on prend la première exploitable). `None` si rien de
+/// positif n'en ressort.
+fn parse_yield(value: Option<&Value>) -> Option<u32> {
+    match value? {
+        Value::Number(number) => number
+            .as_f64()
+            .filter(|amount| *amount >= 1.0)
+            .map(|amount| amount.round() as u32),
+        Value::String(text) => first_integer(text),
+        Value::Array(items) => items.iter().find_map(|item| parse_yield(Some(item))),
+        _ => None,
+    }
+}
+
+/// Premier entier positif rencontré dans un texte (« Pour 4 personnes » → 4).
+fn first_integer(text: &str) -> Option<u32> {
+    let mut digits = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_digit() {
+            digits.push(ch);
+        } else if !digits.is_empty() {
+            break;
+        }
+    }
+    digits.parse().ok().filter(|&number| number > 0)
 }
 
 /// `image` peut être une URL, un tableau d'URLs, ou un objet `ImageObject`.
@@ -595,6 +639,40 @@ mod tests {
         assert_eq!(recipe.ingredients[0].name, "courgettes");
         // Les étapes des sections sont aplaties avec les étapes simples.
         assert_eq!(recipe.steps, ["Émincer l'ail.", "Laisser mijoter."]);
+    }
+
+    #[test]
+    fn resizes_ingredients_from_recipe_yield_to_default_servings() {
+        // Page « pour 4 personnes » → quantités divisées par 2 (base 2).
+        let page = r#"<script type="application/ld+json">
+            {"@type":"Recipe","name":"Rata","recipeYield":"4 personnes",
+             "recipeIngredient":["600 g de courgettes","4 œufs"]}
+            </script>"#;
+        let recipe = parse_recipe(page).expect("recette trouvée");
+        assert_eq!(recipe.servings, 2);
+        assert_eq!(recipe.ingredients[0].amount, 300.0);
+        assert_eq!(recipe.ingredients[1].amount, 2.0);
+    }
+
+    #[test]
+    fn keeps_quantities_without_a_recipe_yield() {
+        let page = r#"<script type="application/ld+json">
+            {"@type":"Recipe","name":"Rata","recipeIngredient":["600 g de courgettes"]}
+            </script>"#;
+        let recipe = parse_recipe(page).expect("recette trouvée");
+        assert_eq!(recipe.servings, 2);
+        assert_eq!(recipe.ingredients[0].amount, 600.0);
+    }
+
+    #[test]
+    fn parses_recipe_yield_shapes() {
+        use serde_json::json;
+        assert_eq!(parse_yield(Some(&json!(4))), Some(4));
+        assert_eq!(parse_yield(Some(&json!("6"))), Some(6));
+        assert_eq!(parse_yield(Some(&json!("Pour 8 personnes"))), Some(8));
+        assert_eq!(parse_yield(Some(&json!(["4 servings", "4"]))), Some(4));
+        assert_eq!(parse_yield(Some(&json!("aucun nombre"))), None);
+        assert_eq!(parse_yield(None), None);
     }
 
     #[test]

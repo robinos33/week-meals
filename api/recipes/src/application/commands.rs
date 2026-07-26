@@ -21,6 +21,13 @@ pub struct RecipeFields {
     pub ingredients: Vec<IngredientInput>,
     /// Étapes de préparation ordonnées.
     pub steps: Vec<String>,
+    /// Nombre de personnes de la recette (base des quantités). Doit être `> 0`.
+    pub servings: u32,
+}
+
+/// Message d'une entrée de portions invalide.
+fn invalid_servings() -> String {
+    "le nombre de personnes doit être supérieur à zéro".to_owned()
 }
 
 // --- Create ---------------------------------------------------------------
@@ -59,6 +66,9 @@ impl<'a> CreateRecipeHandler<'a> {
 
     /// Exécute la création. Ne renvoie jamais d'erreur.
     pub async fn handle(&self, command: CreateRecipeCommand) -> CreateRecipeResponse {
+        if command.fields.servings == 0 {
+            return CreateRecipeResponse::Invalid(invalid_servings());
+        }
         let ingredients = match build_ingredients(command.fields.ingredients) {
             Ok(ingredients) => ingredients,
             Err(message) => return CreateRecipeResponse::Invalid(message),
@@ -72,7 +82,7 @@ impl<'a> CreateRecipeHandler<'a> {
             ingredients,
             command.fields.steps,
         ) {
-            Ok(recipe) => recipe,
+            Ok(recipe) => recipe.with_servings(command.fields.servings),
             Err(error) => return CreateRecipeResponse::Invalid(error.to_string()),
         };
 
@@ -123,6 +133,9 @@ impl<'a> UpdateRecipeHandler<'a> {
 
     /// Exécute la mise à jour. Ne renvoie jamais d'erreur.
     pub async fn handle(&self, command: UpdateRecipeCommand) -> UpdateRecipeResponse {
+        if command.fields.servings == 0 {
+            return UpdateRecipeResponse::Invalid(invalid_servings());
+        }
         let ingredients = match build_ingredients(command.fields.ingredients) {
             Ok(ingredients) => ingredients,
             Err(message) => return UpdateRecipeResponse::Invalid(message),
@@ -137,7 +150,7 @@ impl<'a> UpdateRecipeHandler<'a> {
             ingredients,
             command.fields.steps,
         ) {
-            Ok(recipe) => recipe,
+            Ok(recipe) => recipe.with_servings(command.fields.servings),
             Err(error) => return UpdateRecipeResponse::Invalid(error.to_string()),
         };
 
@@ -226,6 +239,7 @@ mod tests {
                 unit: Unit::G,
             }],
             steps: vec!["Émincer.".to_owned()],
+            servings: 2,
         }
     }
 

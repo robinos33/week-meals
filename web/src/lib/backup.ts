@@ -27,6 +27,8 @@ export interface BackupRecipe {
   photo: string | null;
   ingredients: Ingredient[];
   steps: string[];
+  /** Nombre de personnes (base des quantités). Défaut 2 pour les vieux fichiers. */
+  servings: number;
 }
 
 /** Fichier de sauvegarde complet. */
@@ -60,6 +62,7 @@ export function buildBackup(recipes: RecipeView[], now: Date = new Date()): Reci
       photo: webPhoto(r.photo),
       ingredients: r.ingredients,
       steps: r.steps,
+      servings: r.servings,
     })),
   };
 }
