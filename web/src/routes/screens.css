@@ -15,6 +15,44 @@
   font-size: 1.9rem;
 }
 
+/* Point discret de synchro de la liste de courses (#21). Trois états :
+   `live` (vert, en ligne et à jour), `syncing` (ambre pulsé, mutations en file
+   à rejouer), `offline` (gris estompé, pas de réseau). */
+.sync-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: var(--color-muted);
+  opacity: 0.4;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.sync-dot[data-state="live"] {
+  background: var(--color-primary);
+  opacity: 1;
+}
+
+.sync-dot[data-state="syncing"] {
+  background: #d9a441; /* ambre : synchronisation en cours */
+  opacity: 1;
+  animation: sync-pulse 1s ease-in-out infinite;
+}
+
+@keyframes sync-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-dot[data-state="syncing"] {
+    animation: none;
+  }
+}
+
 /* L'action d'en-tête reste sur une ligne ; c'est le titre qui cède la place. */
 .screen__header .btn {
   flex: 0 0 auto;

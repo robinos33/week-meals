@@ -18,12 +18,21 @@ import {
   sameCombo,
   useReorderItems,
   useShoppingList,
+  useShoppingSync,
   useUpdateItem,
   type ShoppingItem,
+  type SyncState,
   type Unit,
 } from "../api/shopping-list";
 import { foodEmoji } from "../lib/food-emoji";
 import "./screens.css";
+
+/** Libellé (title + a11y) du point de synchro selon l'état. */
+const SYNC_LABELS: Record<SyncState, string> = {
+  offline: "Hors-ligne — les changements seront synchronisés au retour du réseau",
+  syncing: "Synchronisation…",
+  live: "Synchronisé en direct",
+};
 
 /**
  * Onglet Courses (UX inspirée de Google Keep) : ajout rapide en haut, articles
@@ -31,6 +40,7 @@ import "./screens.css";
  */
 export function ShoppingScreen() {
   const query = useShoppingList();
+  const { state: syncState } = useShoppingSync();
   const addItem = useAddItem();
   const updateItem = useUpdateItem();
   const clearChecked = useClearChecked();
@@ -43,7 +53,16 @@ export function ShoppingScreen() {
   return (
     <section>
       <header className="screen__header">
-        <h1 className="screen__title">Courses</h1>
+        <h1 className="screen__title">
+          Courses
+          <span
+            className="sync-dot"
+            data-state={syncState}
+            title={SYNC_LABELS[syncState]}
+            aria-label={SYNC_LABELS[syncState]}
+            role="status"
+          />
+        </h1>
         {done.length > 0 && (
           <button
             className="btn btn--danger-ghost"

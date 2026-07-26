@@ -9,9 +9,13 @@
 //! Requêtes runtime (aucune macro vérifiée à la compilation) ; erreurs SQLx
 //! traduites en [`RepositoryError`].
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use chrono::NaiveDate;
 use kernel::{HouseholdId, Quantity, RepositoryError, ShoppingItemId, Unit};
 use sqlx::{Row, SqlitePool};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::domain::{
@@ -486,5 +490,100 @@ impl CookedCountRecorder for SqlxCookedCounter {
         .map_err(backend)?;
 
         tx.commit().await.map_err(backend)
+    }
+}
+
+// --- Notificateur temps réel ---------------------------------------------
+
+/// Bus de notifications en mémoire : un canal *broadcast* par foyer, signalant
+/// « la liste a changé » aux flux SSE ouverts (cf. synchro temps réel, #21).
+///
+/// Volontairement **en mémoire** : le déploiement est mono-process sur une
+/// machine unique (cf. ADR-0008), il n'y a donc qu'un émetteur et tous les
+/// abonnés vivent dans le même processus — pas besoin de Redis ni de
+/// `LISTEN/NOTIFY`. Le payload est `()` : le signal dit seulement « re-lis la
+/// liste », le client refait un `GET /shopping-list` (source de vérité unique,
+/// pas de divergence possible entre le diff poussé et l'état réel).
+///
+/// `Clone` est bon marché (un `Arc` partagé) : l'état applicatif en tient une
+/// copie, la route SSE s'y abonne, les handlers d'écriture y publient.
+#[derive(Clone, Default)]
+pub struct ShoppingListNotifier {
+    channels: Arc<Mutex<HashMap<HouseholdId, broadcast::Sender<()>>>>,
+}
+
+impl ShoppingListNotifier {
+    /// Crée un bus vide (les canaux naissent au premier abonnement/signal).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// S'abonne aux changements de la liste d'un foyer.
+    ///
+    /// Le récepteur peut « prendre du retard » si un client est lent : le canal
+    /// a une profondeur bornée et renvoie alors un `Lagged`. Ce n'est pas
+    /// gênant — la route SSE traite un retard comme un simple « change »
+    /// supplémentaire, le client resynchronise de toute façon en relisant.
+    pub fn subscribe(&self, household: HouseholdId) -> broadcast::Receiver<()> {
+        self.sender(household).subscribe()
+    }
+
+    /// Signale que la liste d'un foyer vient de changer.
+    ///
+    /// Sans effet s'il n'y a aucun abonné (personne n'a le flux ouvert) : c'est
+    /// le cas nominal quand on fait ses courses seul.
+    pub fn notify(&self, household: HouseholdId) {
+        // `send` n'échoue que s'il n'y a aucun récepteur : sans importance ici.
+        let _ = self.sender(household).send(());
+    }
+
+    /// Récupère (ou crée) l'émetteur du foyer.
+    fn sender(&self, household: HouseholdId) -> broadcast::Sender<()> {
+        let mut channels = self.channels.lock().expect("mutex du notifier empoisonné");
+        channels
+            .entry(household)
+            .or_insert_with(|| broadcast::channel(16).0)
+            .clone()
+    }
+}
+
+#[cfg(test)]
+mod notifier_tests {
+    use super::ShoppingListNotifier;
+    use kernel::HouseholdId;
+
+    #[tokio::test]
+    async fn subscriber_receives_notification_for_its_household() {
+        let notifier = ShoppingListNotifier::new();
+        let household = HouseholdId::new();
+        let mut rx = notifier.subscribe(household);
+
+        notifier.notify(household);
+
+        assert!(rx.recv().await.is_ok(), "l'abonné doit recevoir le signal");
+    }
+
+    #[tokio::test]
+    async fn notification_is_scoped_to_its_household() {
+        let notifier = ShoppingListNotifier::new();
+        let mine = HouseholdId::new();
+        let other = HouseholdId::new();
+        let mut rx = notifier.subscribe(mine);
+
+        notifier.notify(other);
+
+        // Rien pour mon foyer : `try_recv` doit être vide (et non un signal).
+        assert!(
+            rx.try_recv().is_err(),
+            "un changement d'un autre foyer ne doit pas réveiller mon flux"
+        );
+    }
+
+    #[test]
+    fn notify_without_subscriber_is_a_noop() {
+        let notifier = ShoppingListNotifier::new();
+        // Ne doit pas paniquer même si personne n'écoute.
+        notifier.notify(HouseholdId::new());
     }
 }

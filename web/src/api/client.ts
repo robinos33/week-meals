@@ -49,6 +49,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/**
+ * Ouvre un flux `Server-Sent Events` sur une route de l'API.
+ *
+ * `withCredentials` envoie le cookie de session, comme les requêtes `fetch`
+ * (le front et l'API peuvent être sur des origines distinctes en prod, cf.
+ * CORS). `EventSource` gère seul la reconnexion en cas de coupure réseau.
+ */
+export function eventSource(path: string): EventSource {
+  return new EventSource(`${BASE_URL}${path}`, { withCredentials: true });
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>

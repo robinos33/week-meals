@@ -41,7 +41,8 @@ use recipes::infrastructure::{
 };
 use recipes::presentation::RecipeState;
 use shopping_list::infrastructure::{
-    SqlxCookedCounter, SqlxPlannedIngredients, SqlxReferenceRepository, SqlxShoppingListRepository,
+    ShoppingListNotifier, SqlxCookedCounter, SqlxPlannedIngredients, SqlxReferenceRepository,
+    SqlxShoppingListRepository,
 };
 use shopping_list::presentation::ShoppingListState;
 
@@ -231,6 +232,8 @@ pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Rou
         references: Arc::new(SqlxReferenceRepository::new(pool.clone())),
         planned: Arc::new(SqlxPlannedIngredients::new(pool.clone())),
         cooked: Arc::new(SqlxCookedCounter::new(pool.clone())),
+        // Bus temps réel partagé par le process : un canal par foyer (cf. #21).
+        notifier: ShoppingListNotifier::new(),
     };
 
     // Les couches session/CORS ne portent que sur l'API : inutile d'ouvrir une
