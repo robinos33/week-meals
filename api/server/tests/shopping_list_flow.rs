@@ -107,6 +107,22 @@ async fn generate(router: &Router, from: &str, to: &str) -> Value {
     json_body(response).await
 }
 
+/// Ajoute un article à la main et renvoie la réponse JSON de la ligne créée
+/// ou fusionnée.
+async fn add_item(router: &Router, name: &str, amount: f64, unit: &str) -> Value {
+    let response = router
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/shopping-list/items",
+            &serde_json::json!({ "name": name, "amount": amount, "unit": unit }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    json_body(response).await
+}
+
 /// Lit la liste de courses courante.
 async fn list_items(router: &Router) -> Value {
     let response = router
@@ -194,16 +210,7 @@ async fn a_manually_added_item_lands_at_the_top() {
     plan(&router, "2026-07-13", "dinner", &recipe).await;
     generate(&router, "2026-07-13", "2026-07-19").await;
 
-    let response = router
-        .clone()
-        .oneshot(json_request(
-            "POST",
-            "/api/shopping-list/items",
-            &serde_json::json!({ "name": "sel", "amount": 1.0, "unit": "piece" }),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::CREATED);
+    add_item(&router, "sel", 1.0, "piece").await;
 
     let items = list_items(&router).await;
     let items = items.as_array().unwrap();
@@ -236,6 +243,59 @@ async fn generating_scales_quantities_by_servings() {
     let items = generate(&router, "2026-07-14", "2026-07-14").await;
     let items = items.as_array().unwrap();
     assert_eq!(items[0]["amount"], 300.0); // 600 × 2/4
+}
+
+#[tokio::test]
+async fn adding_an_existing_ingredient_sums_quantities() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool, store, &config);
+
+    // Deux ajouts du même ingrédient : une seule ligne, quantités cumulées.
+    add_item(&router, "courgette", 3.0, "piece").await;
+    add_item(&router, "  Courgette ", 2.0, "piece").await; // casse/espaces ignorés
+
+    let items = list_items(&router).await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 1, "pas de doublon");
+    assert_eq!(items[0]["name"], "courgette");
+    assert_eq!(items[0]["amount"], 5.0);
+
+    // Somme inter-unités : 500 g + 0,5 kg → 1000 g dans l'unité de la ligne.
+    add_item(&router, "farine", 500.0, "g").await;
+    add_item(&router, "farine", 0.5, "kg").await;
+    let items = list_items(&router).await;
+    let items = items.as_array().unwrap();
+    let farine = items.iter().find(|i| i["name"] == "farine").unwrap();
+    assert_eq!(farine["amount"], 1000.0);
+    assert_eq!(farine["unit"], "g");
+}
+
+#[tokio::test]
+async fn manual_add_sums_onto_a_generated_line() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool, store, &config);
+
+    // 600 g de courgette générés depuis le calendrier…
+    let ratatouille = create_recipe(&router, "Ratatouille").await;
+    plan(&router, "2026-07-13", "dinner", &ratatouille).await;
+    generate(&router, "2026-07-13", "2026-07-19").await;
+
+    // … + 300 g ajoutés à la main : une seule ligne (900 g), toujours générée.
+    add_item(&router, "courgette", 300.0, "g").await;
+    let items = list_items(&router).await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 1, "fusion sur la ligne générée");
+    assert_eq!(items[0]["amount"], 900.0);
+    assert_eq!(items[0]["unit"], "g");
+    assert_eq!(items[0]["generated"], true);
 }
 
 #[tokio::test]

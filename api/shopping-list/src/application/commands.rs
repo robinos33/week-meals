@@ -179,6 +179,11 @@ impl<'a> AddItemHandler<'a> {
     }
 
     /// Exécute l'ajout. Ne renvoie jamais d'erreur.
+    ///
+    /// Additionne plutôt que de dupliquer : si un article **non coché** du même
+    /// ingrédient (nom normalisé) et de **même dimension** existe déjà, la
+    /// quantité est cumulée sur cette ligne (dans son unité) — jamais deux fois
+    /// le même ingrédient dans la liste. À défaut, nouvelle ligne manuelle.
     pub async fn handle(&self, command: AddItemCommand) -> AddItemResponse {
         if command.name.trim().is_empty() {
             return AddItemResponse::Invalid("le nom ne peut pas être vide".to_owned());
@@ -188,12 +193,46 @@ impl<'a> AddItemHandler<'a> {
             Err(error) => return AddItemResponse::Invalid(quantity_error(error)),
         };
 
+        let existing = match self.items.list(command.household_id).await {
+            Ok(items) => items,
+            Err(_) => return AddItemResponse::Unavailable,
+        };
+        let key = normalize_name(&command.name);
+        let mergeable = existing.into_iter().find(|item| {
+            !item.checked
+                && item.quantity.dimension() == quantity.dimension()
+                && normalize_name(&item.name) == key
+        });
+
+        if let Some(target) = mergeable {
+            let merged = merge(target, quantity);
+            return match self.items.update(&merged).await {
+                Ok(()) => AddItemResponse::Added(merged),
+                Err(_) => AddItemResponse::Unavailable,
+            };
+        }
+
         let item = ShoppingItem::manual(command.household_id, command.name, quantity);
         match self.items.add(&item).await {
             Ok(()) => AddItemResponse::Added(item),
             Err(_) => AddItemResponse::Unavailable,
         }
     }
+}
+
+/// Cumule `added` sur la ligne `target` (même dimension garantie) et renvoie la
+/// ligne mise à jour.
+///
+/// La somme se fait dans l'unité de base de la dimension puis se ré-exprime dans
+/// l'unité de la ligne cible (500 g + 0,5 kg → 1000 g ; 1 kg + 500 g → 1,5 kg).
+/// Le résultat, somme de deux montants strictement positifs finis, est toujours
+/// une quantité valide.
+fn merge(mut target: ShoppingItem, added: Quantity) -> ShoppingItem {
+    let unit = target.quantity.unit();
+    let summed = (target.quantity.in_base() + added.in_base()) / unit.base_factor();
+    target.quantity = Quantity::new(summed, unit)
+        .expect("la somme de deux quantités positives finies est valide");
+    target
 }
 
 // --- Édition --------------------------------------------------------------
@@ -415,4 +454,148 @@ impl<'a> ReorderHandler<'a> {
 /// Message lisible pour une quantité refusée par le `kernel`.
 fn quantity_error(error: QuantityError) -> String {
     format!("quantité invalide : {error}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::ShoppingItem;
+    use crate::testing::InMemoryShoppingList;
+    use kernel::ShoppingItemId;
+
+    fn household() -> HouseholdId {
+        HouseholdId::new()
+    }
+
+    fn generated(household_id: HouseholdId, name: &str, amount: f64, unit: Unit) -> ShoppingItem {
+        ShoppingItem {
+            id: ShoppingItemId::new(),
+            household_id,
+            name: name.to_owned(),
+            quantity: Quantity::new(amount, unit).unwrap(),
+            category: Some("legumes".to_owned()),
+            checked: false,
+            generated: true,
+            position: 0,
+        }
+    }
+
+    async fn add(repo: &InMemoryShoppingList, h: HouseholdId, name: &str, amount: f64, unit: Unit) {
+        let response = AddItemHandler::new(repo)
+            .handle(AddItemCommand {
+                household_id: h,
+                name: name.to_owned(),
+                amount,
+                unit,
+            })
+            .await;
+        assert!(
+            matches!(response, AddItemResponse::Added(_)),
+            "ajout accepté"
+        );
+    }
+
+    #[tokio::test]
+    async fn adding_a_new_ingredient_creates_a_line() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "courgette", 3.0, Unit::Piece).await;
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, Quantity::new(3.0, Unit::Piece).unwrap());
+    }
+
+    #[tokio::test]
+    async fn adding_an_existing_ingredient_sums_quantities() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "courgette", 3.0, Unit::Piece).await;
+        add(&repo, h, "courgette", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1, "une seule ligne, pas de doublon");
+        assert_eq!(items[0].quantity, Quantity::new(5.0, Unit::Piece).unwrap());
+    }
+
+    #[tokio::test]
+    async fn sum_converts_into_the_existing_line_unit() {
+        // 500 g déjà présents + 0,5 kg ajoutés → 1000 g (unité de la ligne).
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "farine", 500.0, Unit::G).await;
+        add(&repo, h, "farine", 0.5, Unit::Kg).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, Quantity::new(1000.0, Unit::G).unwrap());
+    }
+
+    #[tokio::test]
+    async fn name_match_ignores_case_and_whitespace() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "Courgette", 3.0, Unit::Piece).await;
+        add(&repo, h, "  courgette ", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, Quantity::new(5.0, Unit::Piece).unwrap());
+    }
+
+    #[tokio::test]
+    async fn manual_add_merges_into_a_generated_line() {
+        // Le doublon le plus courant : un ajout manuel sur un ingrédient déjà
+        // généré depuis le calendrier. On cumule sur la ligne générée.
+        let h = household();
+        let repo = InMemoryShoppingList::with(vec![generated(h, "courgette", 4.0, Unit::Piece)]);
+        add(&repo, h, "courgette", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1, "fusion sur la ligne générée");
+        assert_eq!(items[0].quantity, Quantity::new(6.0, Unit::Piece).unwrap());
+        assert!(items[0].generated, "la ligne reste générée");
+    }
+
+    #[tokio::test]
+    async fn different_dimensions_stay_separate() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "sirop", 3.0, Unit::Piece).await;
+        add(&repo, h, "sirop", 200.0, Unit::Ml).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 2, "pièces et mL ne se cumulent pas");
+    }
+
+    #[tokio::test]
+    async fn checked_line_is_not_merged_into() {
+        // Un article déjà coché (acheté) n'absorbe pas un réajout : nouvelle
+        // ligne, à cocher à son tour.
+        let mut done = generated(household(), "courgette", 4.0, Unit::Piece);
+        done.checked = true;
+        let h = done.household_id;
+        let repo = InMemoryShoppingList::with(vec![done]);
+        add(&repo, h, "courgette", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(
+            items.len(),
+            2,
+            "le coché reste, une nouvelle ligne est créée"
+        );
+    }
+
+    #[tokio::test]
+    async fn empty_name_is_rejected() {
+        let repo = InMemoryShoppingList::default();
+        let response = AddItemHandler::new(&repo)
+            .handle(AddItemCommand {
+                household_id: household(),
+                name: "   ".to_owned(),
+                amount: 1.0,
+                unit: Unit::Piece,
+            })
+            .await;
+        assert!(matches!(response, AddItemResponse::Invalid(_)));
+    }
 }

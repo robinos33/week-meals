@@ -279,10 +279,10 @@ function QuantityStepper({
 /**
  * Champ d'ajout rapide, toujours accessible en haut de l'écran.
  *
- * Le combo **produit / quantité / unité** est unique : en tapant, si le même
- * combo est déjà présent (non coché) on prévient et on bloque l'ajout ; s'il
- * n'existe que **coché**, on propose de le remettre dans la liste (décoché)
- * plutôt que de créer un doublon.
+ * Un ingrédient déjà présent (non coché) n'est jamais dupliqué : l'API cumule
+ * la quantité sur la ligne existante (« courgette 3 » + « courgette 2 » →
+ * « courgette 5 »). S'il n'existe plus que **coché** (déjà acheté), on propose
+ * de le remettre dans la liste plutôt que d'ouvrir une nouvelle ligne.
  */
 function QuickAdd({
   items,
@@ -307,15 +307,12 @@ function QuickAdd({
       ? { name: name.trim(), amount: parsed, unit }
       : null;
 
-  // Même combo déjà dans la liste : bloquant s'il est actif, « remettable »
-  // s'il n'y est plus que coché.
-  const duplicate = candidate
-    ? items.find((item) => !item.checked && sameCombo(item, candidate))
+  // Même combo mais déjà **coché** : plutôt que d'ouvrir une nouvelle ligne, on
+  // propose de le remettre (décoché) dans la liste. Un combo non coché, lui,
+  // n'est pas bloqué : l'API cumule la quantité côté serveur.
+  const restorable = candidate
+    ? items.find((item) => item.checked && sameCombo(item, candidate))
     : undefined;
-  const restorable =
-    candidate && !duplicate
-      ? items.find((item) => item.checked && sameCombo(item, candidate))
-      : undefined;
 
   function reset() {
     setName("");
@@ -329,12 +326,12 @@ function QuickAdd({
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (!candidate || duplicate) return;
+    if (!candidate) return;
     if (restorable) {
       restore(restorable); // même combo coché : on le remet plutôt que dupliquer
       return;
     }
-    onAdd(candidate);
+    onAdd(candidate); // l'API cumule si l'ingrédient est déjà présent
     reset();
   }
 
@@ -364,16 +361,11 @@ function QuickAdd({
         className="btn btn--primary"
         type="submit"
         aria-label="Ajouter à la liste"
-        disabled={pending || Boolean(duplicate)}
+        disabled={pending}
       >
         +
       </button>
 
-      {duplicate && (
-        <p className="quick-add__note quick-add__note--warn" role="status">
-          Déjà dans la liste.
-        </p>
-      )}
       {restorable && (
         <button
           type="button"
