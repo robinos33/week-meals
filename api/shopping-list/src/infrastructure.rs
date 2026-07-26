@@ -391,9 +391,15 @@ impl PlannedIngredientsSource for SqlxPlannedIngredients {
     ) -> Result<Vec<PlannedIngredient>, RepositoryError> {
         // Une recette planifiée deux fois dans la plage produit deux jeux de
         // lignes : l'agrégation (domaine) cumulera les quantités.
+        //
+        // Mise à l'échelle par le ratio `mp.servings / r.servings` : une recette
+        // « pour 2 » planifiée pour 4 convives voit ses quantités doublées. La
+        // jointure sur `recipes` fournit la base ; `r.servings` est contraint
+        // `> 0`, la division est donc sûre.
         let rows = sqlx::query(
-            "select ri.name, ri.quantity, ri.unit \
+            "select ri.name, ri.quantity * mp.servings / r.servings as quantity, ri.unit \
              from meal_plan mp \
+             join recipes r on r.id = mp.recipe_id \
              join recipe_ingredients ri on ri.recipe_id = mp.recipe_id \
              where mp.household_id = ? and mp.meal_date between ? and ? \
              order by mp.meal_date, mp.slot, ri.position",

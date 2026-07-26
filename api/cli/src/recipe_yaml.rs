@@ -5,9 +5,19 @@
 //! optionnelle, `ingredients` (`name`/`quantity`/`unit`) et `steps` ordonnées.
 
 use anyhow::{Context, Result};
-use kernel::{HouseholdId, Quantity, RecipeId, Unit};
+use kernel::{HouseholdId, Quantity, RecipeId, Unit, DEFAULT_SERVINGS};
 use recipes::domain::{Recipe, RecipeIngredient};
 use serde::{Deserialize, Serialize};
+
+/// Valeur par défaut du champ `servings` d'un seed (recette « pour 2 »).
+fn default_servings() -> u32 {
+    DEFAULT_SERVINGS
+}
+
+/// Omet `servings` du YAML exporté quand il vaut la base par défaut.
+fn is_default_servings(servings: &u32) -> bool {
+    *servings == DEFAULT_SERVINGS
+}
 
 /// Une recette telle qu'écrite dans un fichier YAML de seed / export.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -23,6 +33,10 @@ pub struct RecipeYaml {
     /// Chemin relatif au dossier de seed ou URL (optionnel).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub photo: Option<String>,
+    /// Nombre de personnes (base des quantités). Défaut : 2 ; omis à l'export
+    /// quand il vaut la base.
+    #[serde(default = "default_servings", skip_serializing_if = "is_default_servings")]
+    pub servings: u32,
     /// Ingrédients.
     #[serde(default)]
     pub ingredients: Vec<IngredientYaml>,
@@ -52,6 +66,7 @@ impl RecipeYaml {
     /// temps hors bornes).
     pub fn into_recipe(self, id: RecipeId, household: HouseholdId) -> Result<Recipe> {
         let title = self.title;
+        let servings = self.servings;
         let ingredients = self
             .ingredients
             .into_iter()
@@ -78,6 +93,7 @@ impl RecipeYaml {
             ingredients,
             self.steps,
         )
+        .map(|recipe| recipe.with_servings(servings))
         .with_context(|| format!("recette « {title} » invalide"))
     }
 
@@ -90,6 +106,7 @@ impl RecipeYaml {
             prep_time_min: recipe.prep_time_min,
             cook_time_min: recipe.cook_time_min,
             photo: recipe.photo,
+            servings: recipe.servings,
             ingredients: recipe
                 .ingredients
                 .into_iter()
@@ -111,6 +128,7 @@ impl RecipeYaml {
             prep_time_min: recipe.prep_time_min,
             cook_time_min: recipe.cook_time_min,
             photo: recipe.photo.clone(),
+            servings: recipe.servings,
             ingredients: recipe
                 .ingredients
                 .iter()

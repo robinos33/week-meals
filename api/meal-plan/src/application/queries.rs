@@ -83,12 +83,14 @@ mod tests {
             date("2026-07-13"),
             Slot::Lunch,
             RecipeId::new(),
+            2,
         ));
         plan.seed(PlannedMeal::new(
             household,
             date("2026-07-20"),
             Slot::Dinner,
             RecipeId::new(),
+            2,
         ));
 
         let response = GetWeekHandler::new(&plan)

@@ -3,11 +3,13 @@
 # - `unit` ∈ { g, kg, ml, l, piece }
 # - `photo` : chemin relatif à ce dossier ou URL — optionnel dans le seed.
 # - `steps` : étapes de préparation, liste ordonnée de texte — optionnel.
+# - `servings` : nombre de personnes (base des quantités) — optionnel, défaut 2.
 # - Import en DB : `import` (upsert idempotent) ; export inverse : `export`.
 
 title: Ratatouille
 prep_time_min: 25
 cook_time_min: 45
+servings: 4
 photo: ~
 
 ingredients:

@@ -59,22 +59,30 @@ pub struct PlannedMeal {
     pub slot: Slot,
     /// Recette placée.
     pub recipe_id: RecipeId,
+    /// Nombre de convives voulu pour ce créneau. La génération de liste de
+    /// courses met les quantités de la recette à l'échelle par le ratio
+    /// `servings / recette.servings`. Défaut : 2 (`kernel::DEFAULT_SERVINGS`).
+    pub servings: u32,
 }
 
 impl PlannedMeal {
-    /// Construit une case du calendrier.
+    /// Construit une case du calendrier. Une valeur de `servings` nulle est
+    /// ramenée à 1 (invariant `> 0`, aligné sur la contrainte SQL) ; la
+    /// validation de l'entrée utilisateur se fait en amont.
     #[must_use]
     pub fn new(
         household_id: HouseholdId,
         date: NaiveDate,
         slot: Slot,
         recipe_id: RecipeId,
+        servings: u32,
     ) -> Self {
         Self {
             household_id,
             date,
             slot,
             recipe_id,
+            servings: servings.max(1),
         }
     }
 }

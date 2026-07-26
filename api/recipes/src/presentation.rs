@@ -25,7 +25,7 @@ use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use kernel::{RecipeId, Unit};
+use kernel::{RecipeId, Unit, DEFAULT_SERVINGS};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -101,6 +101,12 @@ impl From<IngredientBody> for IngredientInput {
     }
 }
 
+/// Valeur par défaut du champ `servings` d'un corps de requête (recette « pour
+/// 2 » quand le client ne le précise pas).
+fn default_servings() -> u32 {
+    DEFAULT_SERVINGS
+}
+
 /// Corps de création / mise à jour d'une recette.
 #[derive(Debug, Deserialize)]
 struct RecipeBody {
@@ -115,6 +121,8 @@ struct RecipeBody {
     ingredients: Vec<IngredientBody>,
     #[serde(default)]
     steps: Vec<String>,
+    #[serde(default = "default_servings")]
+    servings: u32,
 }
 
 impl From<RecipeBody> for RecipeFields {
@@ -126,6 +134,7 @@ impl From<RecipeBody> for RecipeFields {
             photo: body.photo,
             ingredients: body.ingredients.into_iter().map(Into::into).collect(),
             steps: body.steps,
+            servings: body.servings,
         }
     }
 }
@@ -149,6 +158,8 @@ struct RecipeView {
     cook_time_min: Option<u32>,
     ingredients: Vec<IngredientView>,
     steps: Vec<String>,
+    /// Nombre de personnes auquel correspondent les quantités.
+    servings: u32,
     /// Nombre de fois cuisinée (#58) : « Cuisiné X fois » sur la fiche, et tri
     /// du podium 🥇🥈🥉 dans la grille.
     cooked_count: u32,
@@ -173,6 +184,7 @@ impl From<Recipe> for RecipeView {
                 })
                 .collect(),
             steps: recipe.steps,
+            servings: recipe.servings,
             cooked_count: recipe.cooked_count,
         }
     }
@@ -437,6 +449,9 @@ struct RecipeDraftView {
     photo: Option<String>,
     ingredients: Vec<IngredientView>,
     steps: Vec<String>,
+    /// Base de portions après resize (cf. scraper) — préremplit le champ « pour
+    /// X personnes » du formulaire.
+    servings: u32,
 }
 
 impl From<ScrapedRecipe> for RecipeDraftView {
@@ -456,6 +471,7 @@ impl From<ScrapedRecipe> for RecipeDraftView {
                 })
                 .collect(),
             steps: recipe.steps,
+            servings: recipe.servings,
         }
     }
 }

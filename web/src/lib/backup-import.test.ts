@@ -15,6 +15,7 @@ const validRecipe: RecipeInput = {
   photo: "https://cdn.example.test/rata.jpg",
   ingredients: [{ name: "courgette", amount: 600, unit: "g" }],
   steps: ["Émincer.", "Laisser mijoter."],
+  servings: 2,
 };
 
 function backupJson(recipes: unknown[], extra: Record<string, unknown> = {}): string {

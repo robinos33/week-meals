@@ -82,6 +82,11 @@ function sanitizeRecipe(raw: unknown): RecipeInput | null {
   const steps = Array.isArray(raw.steps)
     ? raw.steps.filter((s): s is string => typeof s === "string")
     : [];
+  // Vieux fichiers (sans `servings`) : base par défaut 2.
+  const servings =
+    typeof raw.servings === "number" && Number.isFinite(raw.servings) && raw.servings > 0
+      ? Math.floor(raw.servings)
+      : 2;
   return {
     title,
     prep_time_min: minutesOrNull(raw.prep_time_min),
@@ -89,6 +94,7 @@ function sanitizeRecipe(raw: unknown): RecipeInput | null {
     photo: webPhoto(typeof raw.photo === "string" ? raw.photo : null),
     ingredients,
     steps,
+    servings,
   };
 }
 

@@ -56,14 +56,36 @@ async fn create_recipe(router: &Router, title: &str) -> String {
     json_body(response).await["id"].as_str().unwrap().to_owned()
 }
 
-/// Pose une recette sur un créneau du calendrier.
+/// Crée une recette « pour `servings` personnes » avec 600 g de courgette.
+async fn create_recipe_with_servings(router: &Router, title: &str, servings: u32) -> String {
+    let body = serde_json::json!({
+        "title": title,
+        "servings": servings,
+        "ingredients": [{ "name": "courgette", "amount": 600.0, "unit": "g" }],
+        "steps": ["Émincer."]
+    });
+    let response = router
+        .clone()
+        .oneshot(json_request("POST", "/api/recipes", &body))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    json_body(response).await["id"].as_str().unwrap().to_owned()
+}
+
+/// Pose une recette sur un créneau du calendrier (2 personnes par défaut).
 async fn plan(router: &Router, date: &str, slot: &str, recipe_id: &str) {
+    plan_for(router, date, slot, recipe_id, 2).await;
+}
+
+/// Pose une recette sur un créneau pour un nombre de convives donné.
+async fn plan_for(router: &Router, date: &str, slot: &str, recipe_id: &str, servings: u32) {
     let response = router
         .clone()
         .oneshot(json_request(
             "PUT",
             &format!("/api/meal-plan/{date}/{slot}"),
-            &serde_json::json!({ "recipe_id": recipe_id }),
+            &serde_json::json!({ "recipe_id": recipe_id, "servings": servings }),
         ))
         .await
         .unwrap();
@@ -188,6 +210,32 @@ async fn a_manually_added_item_lands_at_the_top() {
     // « sel » (ajout manuel) en tête, devant la courgette générée.
     assert_eq!(items[0]["name"], "sel");
     assert_eq!(items[1]["name"], "courgette");
+}
+
+#[tokio::test]
+async fn generating_scales_quantities_by_servings() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool, store, &config);
+
+    // Recette « pour 2 » (600 g), planifiée pour 4 → quantités doublées.
+    let for_two = create_recipe_with_servings(&router, "Rata pour 2", 2).await;
+    plan_for(&router, "2026-07-13", "dinner", &for_two, 4).await;
+    let items = generate(&router, "2026-07-13", "2026-07-19").await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["name"], "courgette");
+    assert_eq!(items[0]["amount"], 1200.0); // 600 × 4/2
+
+    // Recette « pour 4 » (600 g), planifiée pour 2 → quantités divisées par 2.
+    let for_four = create_recipe_with_servings(&router, "Rata pour 4", 4).await;
+    plan_for(&router, "2026-07-14", "dinner", &for_four, 2).await;
+    let items = generate(&router, "2026-07-14", "2026-07-14").await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items[0]["amount"], 300.0); // 600 × 2/4
 }
 
 #[tokio::test]

@@ -17,6 +17,8 @@ export interface MealPlanEntry {
   date: string; // ISO YYYY-MM-DD
   slot: MealSlot;
   recipe_id: string;
+  /** Nombre de convives pour ce créneau (met les courses à l'échelle). */
+  servings: number;
 }
 
 /** Résumé de recette utile aux créneaux (sous-ensemble de `RecipeView`). */
@@ -44,12 +46,22 @@ export function useRecipeSummaries() {
   });
 }
 
-/** Place (ou remplace) une recette dans un créneau. */
+/** Place (ou remplace) une recette dans un créneau, avec son nombre de
+ * convives (défaut 2). Sert aussi à changer les convives d'un créneau déjà
+ * rempli : on renvoie le même `recipe_id` avec un nouveau `servings`. */
 export function useSetEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (entry: { date: string; slot: MealSlot; recipe_id: string }) =>
-      api.put<void>(`/meal-plan/${entry.date}/${entry.slot}`, { recipe_id: entry.recipe_id }),
+    mutationFn: (entry: {
+      date: string;
+      slot: MealSlot;
+      recipe_id: string;
+      servings?: number;
+    }) =>
+      api.put<void>(`/meal-plan/${entry.date}/${entry.slot}`, {
+        recipe_id: entry.recipe_id,
+        servings: entry.servings ?? 2,
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meal-plan"] }),
   });
 }

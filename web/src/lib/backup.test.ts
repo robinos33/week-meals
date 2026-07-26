@@ -12,6 +12,7 @@ function recipe(overrides: Partial<RecipeView> = {}): RecipeView {
     cook_time_min: 45,
     ingredients: [{ name: "courgette", amount: 600, unit: "g" }],
     steps: ["Émincer.", "Laisser mijoter."],
+    servings: 4,
     cooked_count: 3,
     ...overrides,
   };
@@ -38,6 +39,7 @@ describe("buildBackup", () => {
       photo: "https://cdn.example.test/rata.jpg",
       ingredients: [{ name: "courgette", amount: 600, unit: "g" }],
       steps: ["Émincer.", "Laisser mijoter."],
+      servings: 4,
     });
   });
 

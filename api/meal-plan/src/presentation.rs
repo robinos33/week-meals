@@ -20,7 +20,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::NaiveDate;
-use kernel::RecipeId;
+use kernel::{RecipeId, DEFAULT_SERVINGS};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -58,10 +58,17 @@ struct WeekParams {
     to: NaiveDate,
 }
 
+/// Valeur par défaut du champ `servings` (créneau « pour 2 » à défaut).
+fn default_servings() -> u32 {
+    DEFAULT_SERVINGS
+}
+
 /// Corps du placement d'une recette sur un créneau.
 #[derive(Debug, Deserialize)]
 struct PlaceBody {
     recipe_id: Uuid,
+    #[serde(default = "default_servings")]
+    servings: u32,
 }
 
 /// Case du calendrier exposée en réponse.
@@ -70,6 +77,7 @@ struct PlannedMealView {
     date: NaiveDate,
     slot: &'static str,
     recipe_id: Uuid,
+    servings: u32,
 }
 
 impl From<PlannedMeal> for PlannedMealView {
@@ -78,6 +86,7 @@ impl From<PlannedMeal> for PlannedMealView {
             date: meal.date,
             slot: meal.slot.as_str(),
             recipe_id: meal.recipe_id.as_uuid(),
+            servings: meal.servings,
         }
     }
 }
@@ -133,6 +142,7 @@ async fn place(
             date,
             slot,
             recipe_id: RecipeId::from(body.recipe_id),
+            servings: body.servings,
         })
         .await;
     match response {
