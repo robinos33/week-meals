@@ -85,6 +85,22 @@ async fn generate(router: &Router, from: &str, to: &str) -> Value {
     json_body(response).await
 }
 
+/// Lit la liste de courses courante.
+async fn list_items(router: &Router) -> Value {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shopping-list")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    json_body(response).await
+}
+
 /// Lit le compteur « cuisiné X fois » d'une recette.
 async fn cooked_count(router: &Router, recipe_id: &str) -> u64 {
     let response = router
@@ -140,6 +156,38 @@ async fn generating_the_list_counts_cooked_recipes_once_per_slot() {
     generate(&router, "2026-07-13", "2026-07-19").await;
     assert_eq!(cooked_count(&router, &ratatouille).await, 2);
     assert_eq!(cooked_count(&router, &tarte).await, 2);
+}
+
+#[tokio::test]
+async fn a_manually_added_item_lands_at_the_top() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool, store, &config);
+
+    // Une liste générée occupe la liste ; l'ajout manuel doit passer devant.
+    let recipe = create_recipe(&router, "Ratatouille").await;
+    plan(&router, "2026-07-13", "dinner", &recipe).await;
+    generate(&router, "2026-07-13", "2026-07-19").await;
+
+    let response = router
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/api/shopping-list/items",
+            &serde_json::json!({ "name": "sel", "amount": 1.0, "unit": "piece" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let items = list_items(&router).await;
+    let items = items.as_array().unwrap();
+    // « sel » (ajout manuel) en tête, devant la courgette générée.
+    assert_eq!(items[0]["name"], "sel");
+    assert_eq!(items[1]["name"], "courgette");
 }
 
 #[tokio::test]
