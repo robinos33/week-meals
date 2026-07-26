@@ -406,15 +406,11 @@
   }
 }
 
-/* Message d'unicité sous la saisie : occupe toute la largeur du formulaire. */
+/* Message sous la saisie : occupe toute la largeur du formulaire. */
 .quick-add__note {
   flex: 1 1 100%;
   margin: 0;
   font-size: 0.85rem;
-}
-
-.quick-add__note--warn {
-  color: var(--color-danger);
 }
 
 /* Proposition de remettre un article coché : cliquable, aspect discret. */
