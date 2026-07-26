@@ -281,8 +281,9 @@ fn is_recipe(value: &Value) -> bool {
 /// mise à l'échelle à tort par la liste de courses. Sans `recipeYield` lisible,
 /// on garde les quantités telles quelles en supposant la base par défaut.
 fn map_recipe(recipe: &Value) -> ScrapedRecipe {
-    let scale = parse_yield(recipe.get("recipeYield"))
-        .map_or(1.0, |yield_| f64::from(DEFAULT_SERVINGS) / f64::from(yield_));
+    let scale = parse_yield(recipe.get("recipeYield")).map_or(1.0, |yield_| {
+        f64::from(DEFAULT_SERVINGS) / f64::from(yield_)
+    });
 
     ScrapedRecipe {
         title: recipe

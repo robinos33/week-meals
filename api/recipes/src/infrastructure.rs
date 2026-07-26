@@ -132,7 +132,11 @@ fn assemble(
         ingredients,
         steps,
     )
-    .map(|recipe| recipe.with_cooked_count(cooked_count).with_servings(servings))
+    .map(|recipe| {
+        recipe
+            .with_cooked_count(cooked_count)
+            .with_servings(servings)
+    })
     .map_err(|e| RepositoryError::Backend(format!("invalid stored recipe: {e}")))
 }
 

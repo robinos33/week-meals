@@ -35,7 +35,10 @@ pub struct RecipeYaml {
     pub photo: Option<String>,
     /// Nombre de personnes (base des quantités). Défaut : 2 ; omis à l'export
     /// quand il vaut la base.
-    #[serde(default = "default_servings", skip_serializing_if = "is_default_servings")]
+    #[serde(
+        default = "default_servings",
+        skip_serializing_if = "is_default_servings"
+    )]
     pub servings: u32,
     /// Ingrédients.
     #[serde(default)]
