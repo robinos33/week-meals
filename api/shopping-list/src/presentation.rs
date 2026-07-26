@@ -193,8 +193,8 @@ async fn stream(
     // Chaque signal (ou retard `Lagged`) devient un `changed` : dans les deux
     // cas le client doit resynchroniser. `Event::data` est requis pour que
     // `EventSource` livre l'événement.
-    let stream = BroadcastStream::new(receiver)
-        .map(|_| Ok(Event::default().event("changed").data("1")));
+    let stream =
+        BroadcastStream::new(receiver).map(|_| Ok(Event::default().event("changed").data("1")));
     Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
