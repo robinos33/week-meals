@@ -1,27 +1,58 @@
-# Référentiel des ingrédients — poids moyens par unité.
+# Dictionnaire des ingrédients — vocabulaire de référence de Week Meals.
 #
-# Utilisé par la génération de liste de courses pour convertir les grammages
-# en unités achetables : 600 g de courgettes → 3 courgettes (arrondi supérieur).
+# Il sert trois choses :
 #
-# - `avg_weight_g`  : poids moyen d'une pièce, en grammes.
-# - `countable: true` : l'ingrédient s'achète et s'affiche toujours en pièces
-#   (œufs…) — jamais reconverti en grammes.
-# - Les ingrédients SANS entrée ici restent affichés tels quels (g, kg, mL, L) :
-#   farine, lait, huile… n'ont pas leur place dans ce fichier.
-# - `category` sert au regroupement des articles dans la liste de courses.
+#   1. **Rapprocher** les formulations des recettes d'un nom canonique unique
+#      (« Courgettes », « courgette jaune », « courgettes » → `courgette`), pour
+#      que la liste de courses ne montre qu'une ligne par produit.
+#   2. **Convertir** les grammages en unités achetables : 600 g de courgettes
+#      → 3 courgettes (arrondi supérieur).
+#   3. **Suggérer** les noms à la saisie manuelle, avec le bon rayon et la
+#      bonne unité.
 #
-# Fichier versionné : seedé en DB au déploiement (upsert par `name`).
+# Champs :
+#
+# - `name`            : nom canonique, celui qui s'affiche dans la liste.
+# - `category`        : rayon, pour le regroupement (`legumes`, `fruits`,
+#                       `cremerie`, `boucherie`, `poissonnerie`, `epicerie`,
+#                       `boulangerie`, `surgeles`, `boissons`, `entretien`).
+# - `avg_weight_g`    : poids moyen d'une pièce, en grammes. **Facultatif** :
+#                       sans lui, l'ingrédient reste dans son unité d'origine
+#                       (farine, lait, huile…) — il garde tout de même son nom
+#                       canonique, ses synonymes et son rayon.
+# - `countable: true` : s'achète et s'affiche **toujours** en pièces (œufs…),
+#                       jamais reconverti en grammes.
+# - `unit`            : unité proposée à la saisie manuelle (`g`, `kg`, `ml`,
+#                       `l`, `piece`). Défaut : `piece` avec un poids moyen,
+#                       `g` sinon.
+# - `aliases`         : synonymes et formulations rencontrées dans les
+#                       recettes. Inutile d'y mettre les pluriels, les accents
+#                       ou les majuscules — le rapprochement les gère seul, de
+#                       même que les qualificatifs (« bio », « frais »,
+#                       « jaune », « surgelé »…) et les fautes de frappe
+#                       proches (« échalotte » → « échalote »).
+#
+# Fichier versionné, source de vérité : il est rejoué en base (upsert par nom)
+# au démarrage du serveur et par `weekmeals seed-ingredients`.
 
-version: 1
+version: 2
 
 ingredients:
-  # Légumes
+  # ------------------------------------------------------------------ Légumes
   - name: tomate
     category: legumes
     avg_weight_g: 120
   - name: tomate cerise
     category: legumes
     avg_weight_g: 15
+    aliases: [tomates cocktail]
+  - name: tomate pelée
+    category: epicerie
+    unit: g
+    aliases: [tomates concassées, pulpe de tomate, coulis de tomate]
+  - name: concentré de tomate
+    category: epicerie
+    unit: g
   - name: courgette
     category: legumes
     avg_weight_g: 250
@@ -34,6 +65,11 @@ ingredients:
   - name: oignon
     category: legumes
     avg_weight_g: 110
+    aliases: [oignon jaune, ognon]
+  - name: oignon nouveau
+    category: legumes
+    avg_weight_g: 30
+    aliases: [cébette, oignon botte]
   - name: échalote
     category: legumes
     avg_weight_g: 40
@@ -41,12 +77,14 @@ ingredients:
     category: legumes
     avg_weight_g: 7
     countable: true
+    aliases: [ail, gousses d'ail, ail haché]
   - name: carotte
     category: legumes
     avg_weight_g: 125
   - name: pomme de terre
     category: legumes
     avg_weight_g: 170
+    aliases: [patate, pommes de terre à chair ferme]
   - name: patate douce
     category: legumes
     avg_weight_g: 250
@@ -59,29 +97,110 @@ ingredients:
   - name: chou-fleur
     category: legumes
     avg_weight_g: 900
+  - name: chou
+    category: legumes
+    avg_weight_g: 900
+    aliases: [chou vert, chou blanc]
   - name: poireau
     category: legumes
     avg_weight_g: 200
   - name: champignon de Paris
     category: legumes
     avg_weight_g: 25
+    aliases: [champignon, champignons de paris]
   - name: salade
     category: legumes
     avg_weight_g: 350
     countable: true
+    aliases: [laitue, batavia, sucrine]
+  - name: épinard
+    category: legumes
+    unit: g
+    aliases: [pousses d'épinard]
   - name: avocat
     category: legumes
     avg_weight_g: 200
     countable: true
+  - name: céleri
+    category: legumes
+    avg_weight_g: 60
+    aliases: [branche de céleri, céleri branche]
+  - name: fenouil
+    category: legumes
+    avg_weight_g: 300
+  - name: haricot vert
+    category: legumes
+    unit: g
+  - name: petit pois
+    category: legumes
+    unit: g
+    aliases: [petits pois]
+  - name: maïs
+    category: epicerie
+    unit: g
+  - name: betterave
+    category: legumes
+    avg_weight_g: 200
+  - name: radis
+    category: legumes
+    avg_weight_g: 15
+    countable: true
+  - name: navet
+    category: legumes
+    avg_weight_g: 150
+  - name: potiron
+    category: legumes
+    unit: g
+    aliases: [courge, butternut, potimarron]
+  - name: gingembre
+    category: legumes
+    unit: g
 
-  # Fruits
+  # ---------------------------------------------------------------- Aromates
+  - name: persil
+    category: legumes
+    unit: g
+    aliases: [persil plat]
+  - name: basilic
+    category: legumes
+    unit: g
+  - name: coriandre
+    category: legumes
+    unit: g
+  - name: ciboulette
+    category: legumes
+    unit: g
+  - name: menthe
+    category: legumes
+    unit: g
+  - name: thym
+    category: epicerie
+    unit: g
+  - name: laurier
+    category: epicerie
+    unit: g
+    aliases: [feuille de laurier]
+  - name: romarin
+    category: epicerie
+    unit: g
+
+  # ------------------------------------------------------------------ Fruits
   - name: citron
     category: fruits
     avg_weight_g: 100
     countable: true
+    aliases: [jus de citron, zeste de citron]
+  - name: citron vert
+    category: fruits
+    avg_weight_g: 70
+    countable: true
+    aliases: [lime]
   - name: pomme
     category: fruits
     avg_weight_g: 150
+  - name: poire
+    category: fruits
+    avg_weight_g: 160
   - name: banane
     category: fruits
     avg_weight_g: 120
@@ -89,9 +208,316 @@ ingredients:
   - name: orange
     category: fruits
     avg_weight_g: 180
+  - name: fraise
+    category: fruits
+    unit: g
+  - name: framboise
+    category: fruits
+    unit: g
+  - name: raisin
+    category: fruits
+    unit: g
+  - name: pêche
+    category: fruits
+    avg_weight_g: 150
+  - name: abricot
+    category: fruits
+    avg_weight_g: 50
+  - name: ananas
+    category: fruits
+    avg_weight_g: 1200
+    countable: true
+  - name: mangue
+    category: fruits
+    avg_weight_g: 350
+    countable: true
+  - name: kiwi
+    category: fruits
+    avg_weight_g: 90
+    countable: true
+  - name: melon
+    category: fruits
+    avg_weight_g: 1000
+    countable: true
 
-  # Crèmerie
+  # ---------------------------------------------------------------- Crèmerie
   - name: œuf
     category: cremerie
     avg_weight_g: 55
     countable: true
+    aliases: [oeuf, jaune d'œuf, blanc d'œuf]
+  - name: lait
+    category: cremerie
+    unit: ml
+  - name: crème fraîche
+    category: cremerie
+    unit: ml
+    aliases: [crème liquide, crème épaisse, crème]
+  - name: beurre
+    category: cremerie
+    unit: g
+    aliases: [beurre demi-sel]
+  - name: yaourt
+    category: cremerie
+    avg_weight_g: 125
+    countable: true
+    aliases: [yaourt nature, yogourt]
+  - name: fromage râpé
+    category: cremerie
+    unit: g
+    aliases: [gruyère râpé, emmental râpé]
+  - name: parmesan
+    category: cremerie
+    unit: g
+  - name: mozzarella
+    category: cremerie
+    avg_weight_g: 125
+    countable: true
+  - name: chèvre
+    category: cremerie
+    unit: g
+    aliases: [bûche de chèvre, fromage de chèvre]
+  - name: comté
+    category: cremerie
+    unit: g
+  - name: feta
+    category: cremerie
+    unit: g
+  - name: ricotta
+    category: cremerie
+    unit: g
+
+  # -------------------------------------------------------- Viandes, poissons
+  - name: poulet
+    category: boucherie
+    unit: g
+    aliases: [blanc de poulet, filet de poulet, escalope de poulet]
+  - name: cuisse de poulet
+    category: boucherie
+    avg_weight_g: 200
+    countable: true
+  - name: bœuf haché
+    category: boucherie
+    unit: g
+    aliases: [steak haché, viande hachée]
+  - name: bœuf
+    category: boucherie
+    unit: g
+    aliases: [bourguignon, paleron]
+  - name: porc
+    category: boucherie
+    unit: g
+    aliases: [filet mignon de porc, échine de porc]
+  - name: lardon
+    category: boucherie
+    unit: g
+    aliases: [lardons fumés, poitrine fumée]
+  - name: jambon
+    category: boucherie
+    avg_weight_g: 50
+    countable: true
+    aliases: [tranche de jambon, jambon blanc]
+  - name: saucisse
+    category: boucherie
+    avg_weight_g: 100
+    countable: true
+    aliases: [chipolata, merguez]
+  - name: agneau
+    category: boucherie
+    unit: g
+    aliases: [gigot d'agneau, épaule d'agneau]
+  - name: veau
+    category: boucherie
+    unit: g
+  - name: saumon
+    category: poissonnerie
+    unit: g
+    aliases: [pavé de saumon, filet de saumon, saumon fumé]
+  - name: cabillaud
+    category: poissonnerie
+    unit: g
+    aliases: [dos de cabillaud, morue]
+  - name: thon
+    category: poissonnerie
+    unit: g
+    aliases: [thon en boîte]
+  - name: crevette
+    category: poissonnerie
+    unit: g
+    aliases: [gambas]
+  - name: moule
+    category: poissonnerie
+    unit: g
+
+  # ---------------------------------------------------------------- Épicerie
+  - name: farine
+    category: epicerie
+    unit: g
+    aliases: [farine de blé, farine t55, farine t65]
+  - name: sucre
+    category: epicerie
+    unit: g
+    aliases: [sucre en poudre, sucre semoule]
+  - name: sucre vanillé
+    category: epicerie
+    unit: g
+  - name: sel
+    category: epicerie
+    unit: g
+    aliases: [sel fin, gros sel, fleur de sel]
+  - name: poivre
+    category: epicerie
+    unit: g
+    aliases: [poivre noir, poivre du moulin]
+  - name: huile d'olive
+    category: epicerie
+    unit: ml
+  - name: huile de tournesol
+    category: epicerie
+    unit: ml
+    aliases: [huile neutre, huile végétale]
+  - name: vinaigre
+    category: epicerie
+    unit: ml
+    aliases: [vinaigre balsamique, vinaigre de vin, vinaigre de cidre]
+  - name: moutarde
+    category: epicerie
+    unit: g
+    aliases: [moutarde de dijon]
+  - name: riz
+    category: epicerie
+    unit: g
+    aliases: [riz basmati, riz thaï, riz complet]
+  - name: pâtes
+    category: epicerie
+    unit: g
+    aliases: [spaghetti, penne, tagliatelle, fusilli, macaroni]
+  - name: lasagne
+    category: epicerie
+    unit: g
+    aliases: [feuilles de lasagne]
+  - name: semoule
+    category: epicerie
+    unit: g
+    aliases: [couscous]
+  - name: quinoa
+    category: epicerie
+    unit: g
+  - name: boulgour
+    category: epicerie
+    unit: g
+  - name: lentille
+    category: epicerie
+    unit: g
+    aliases: [lentilles vertes, lentilles corail]
+  - name: pois chiche
+    category: epicerie
+    unit: g
+  - name: haricot rouge
+    category: epicerie
+    unit: g
+  - name: bouillon
+    category: epicerie
+    unit: ml
+    aliases: [bouillon de volaille, bouillon de légumes, cube de bouillon, fond de veau]
+  - name: lait de coco
+    category: epicerie
+    unit: ml
+  - name: levure
+    category: epicerie
+    unit: g
+    aliases: [levure chimique, levure de boulanger]
+  - name: chocolat noir
+    category: epicerie
+    unit: g
+    aliases: [chocolat, chocolat pâtissier]
+  - name: miel
+    category: epicerie
+    unit: g
+  - name: confiture
+    category: epicerie
+    unit: g
+  - name: olive
+    category: epicerie
+    unit: g
+  - name: cornichon
+    category: epicerie
+    unit: g
+  - name: amande
+    category: epicerie
+    unit: g
+    aliases: [poudre d'amande, amandes effilées]
+  - name: noix
+    category: epicerie
+    unit: g
+    aliases: [cerneaux de noix]
+  - name: pignon de pin
+    category: epicerie
+    unit: g
+  - name: raisin sec
+    category: epicerie
+    unit: g
+  - name: curry
+    category: epicerie
+    unit: g
+  - name: paprika
+    category: epicerie
+    unit: g
+  - name: cumin
+    category: epicerie
+    unit: g
+  - name: curcuma
+    category: epicerie
+    unit: g
+  - name: cannelle
+    category: epicerie
+    unit: g
+  - name: herbes de Provence
+    category: epicerie
+    unit: g
+  - name: piment
+    category: epicerie
+    unit: g
+    aliases: [piment d'espelette, piment de cayenne]
+  - name: sauce soja
+    category: epicerie
+    unit: ml
+  - name: pâte feuilletée
+    category: epicerie
+    avg_weight_g: 230
+    countable: true
+  - name: pâte brisée
+    category: epicerie
+    avg_weight_g: 230
+    countable: true
+
+  # -------------------------------------------------------------- Boulangerie
+  - name: pain
+    category: boulangerie
+    avg_weight_g: 250
+    countable: true
+    aliases: [baguette]
+  - name: pain de mie
+    category: boulangerie
+    avg_weight_g: 500
+    countable: true
+  - name: chapelure
+    category: boulangerie
+    unit: g
+
+  # ----------------------------------------------------------------- Boissons
+  - name: vin blanc
+    category: boissons
+    unit: ml
+  - name: vin rouge
+    category: boissons
+    unit: ml
+  - name: bière
+    category: boissons
+    unit: ml
+  - name: jus d'orange
+    category: boissons
+    unit: ml
+  - name: eau pétillante
+    category: boissons
+    unit: ml

@@ -128,6 +128,32 @@ pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateErro
     sqlx::migrate!("../migrations").run(pool).await
 }
 
+/// Dictionnaire d'ingrédients versionné, relatif au répertoire de travail
+/// (`/app` dans l'image, la racine du dépôt en dev). Surchargeable par
+/// `INGREDIENTS_FILE`.
+const DEFAULT_INGREDIENTS_FILE: &str = "data/ingredients.yaml";
+
+/// Rejoue le seed du dictionnaire d'ingrédients au démarrage.
+///
+/// Le fichier versionné est la source de vérité, la base n'en est qu'un cache :
+/// le seed est un upsert par nom, donc rejouable à chaque démarrage. C'est ce
+/// qui garantit qu'un déploiement embarque bien le vocabulaire de la version
+/// déployée, sans étape manuelle à ne pas oublier.
+///
+/// Un échec ne bloque **pas** le démarrage : sans dictionnaire, la liste de
+/// courses fonctionne toujours — elle perd le rapprochement des formulations
+/// et les suggestions de saisie, pas l'essentiel.
+pub async fn seed_ingredient_dictionary(pool: &SqlitePool) {
+    let path =
+        std::env::var("INGREDIENTS_FILE").unwrap_or_else(|_| DEFAULT_INGREDIENTS_FILE.to_owned());
+    match shopping_list::infrastructure::seed::seed_from_file(pool, std::path::Path::new(&path))
+        .await
+    {
+        Ok(count) => tracing::info!("dictionnaire d'ingrédients à jour ({count} entrées)"),
+        Err(error) => tracing::warn!("dictionnaire d'ingrédients non chargé ({path}) : {error}"),
+    }
+}
+
 /// Extrait l'hôte (sans schéma ni port) d'une URL, pour déduire le `rp_id`.
 /// S'appuie sur le parseur d'`url`, déjà présent via `webauthn-rs`, plutôt que
 /// sur un découpage de chaîne à la main.

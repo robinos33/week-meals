@@ -73,6 +73,57 @@ async fn create_recipe_with_servings(router: &Router, title: &str, servings: u32
     json_body(response).await["id"].as_str().unwrap().to_owned()
 }
 
+/// Crée une recette avec les ingrédients donnés (`(nom, quantité, unité)`).
+async fn create_recipe_with(
+    router: &Router,
+    title: &str,
+    ingredients: &[(&str, f64, &str)],
+) -> String {
+    let ingredients: Vec<Value> = ingredients
+        .iter()
+        .map(|(name, amount, unit)| {
+            serde_json::json!({ "name": name, "amount": amount, "unit": unit })
+        })
+        .collect();
+    let body = serde_json::json!({
+        "title": title,
+        "ingredients": ingredients,
+        "steps": ["Cuisiner."]
+    });
+    let response = router
+        .clone()
+        .oneshot(json_request("POST", "/api/recipes", &body))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    json_body(response).await["id"].as_str().unwrap().to_owned()
+}
+
+/// Charge le dictionnaire versionné dans la base de test — c'est ce que fait
+/// le serveur à son démarrage.
+async fn seed_dictionary(pool: &sqlx::SqlitePool) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/ingredients.yaml");
+    shopping_list::infrastructure::seed::seed_from_file(pool, &path)
+        .await
+        .expect("seed du dictionnaire");
+}
+
+/// Lit le dictionnaire exposé au front.
+async fn dictionary(router: &Router) -> Value {
+    let response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/shopping-list/dictionary")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    json_body(response).await
+}
+
 /// Pose une recette sur un créneau du calendrier (2 personnes par défaut).
 async fn plan(router: &Router, date: &str, slot: &str, recipe_id: &str) {
     plan_for(router, date, slot, recipe_id, 2).await;
@@ -296,6 +347,89 @@ async fn manual_add_sums_onto_a_generated_line() {
     assert_eq!(items[0]["amount"], 900.0);
     assert_eq!(items[0]["unit"], "g");
     assert_eq!(items[0]["generated"], true);
+}
+
+#[tokio::test]
+async fn the_dictionary_reconciles_recipe_wordings() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool.clone(), store, &config);
+    seed_dictionary(&pool).await;
+
+    // Deux recettes qui nomment différemment les mêmes produits.
+    let gratin = create_recipe_with(
+        &router,
+        "Gratin",
+        &[("Courgettes", 600.0, "g"), ("Oeufs", 2.0, "piece")],
+    )
+    .await;
+    let poelee = create_recipe_with(
+        &router,
+        "Poêlée",
+        &[("courgette jaune", 300.0, "g"), ("œuf", 1.0, "piece")],
+    )
+    .await;
+    plan(&router, "2026-07-13", "dinner", &gratin).await;
+    plan(&router, "2026-07-14", "dinner", &poelee).await;
+
+    let items = generate(&router, "2026-07-13", "2026-07-19").await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 2, "une ligne par produit, pas par formulation");
+
+    // 900 g de courgette → 4 pièces (250 g l'unité), sous le nom du dictionnaire.
+    let courgette = items.iter().find(|i| i["name"] == "courgette").unwrap();
+    assert_eq!(courgette["amount"], 4.0);
+    assert_eq!(courgette["unit"], "piece");
+    assert_eq!(courgette["category"], "legumes");
+
+    // 2 + 1 œufs, sous le nom canonique malgré les deux graphies.
+    let oeuf = items.iter().find(|i| i["name"] == "œuf").unwrap();
+    assert_eq!(oeuf["amount"], 3.0);
+
+    // Et l'ajout manuel d'une variante cumule sur la ligne existante.
+    add_item(&router, "Courgettes", 2.0, "piece").await;
+    let items = list_items(&router).await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 2, "toujours pas de doublon");
+    let courgette = items.iter().find(|i| i["name"] == "courgette").unwrap();
+    assert_eq!(courgette["amount"], 6.0);
+}
+
+#[tokio::test]
+async fn the_dictionary_is_exposed_for_input_suggestions() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool.clone(), store, &config);
+
+    // Base neuve : le dictionnaire est vide mais la route répond.
+    assert_eq!(dictionary(&router).await.as_array().unwrap().len(), 0);
+
+    seed_dictionary(&pool).await;
+    let entries = dictionary(&router).await;
+    let entries = entries.as_array().unwrap();
+    assert!(entries.len() > 50, "le dictionnaire versionné est chargé");
+
+    let courgette = entries.iter().find(|e| e["name"] == "courgette").unwrap();
+    assert_eq!(courgette["category"], "legumes");
+    assert_eq!(courgette["unit"], "piece");
+
+    // Une entrée sans poids moyen garde son unité d'achat.
+    let lait = entries.iter().find(|e| e["name"] == "lait").unwrap();
+    assert_eq!(lait["unit"], "ml");
+    // Les synonymes voyagent avec l'entrée : le front s'en sert pour retrouver
+    // « œuf » à partir de « oeuf ».
+    let oeuf = entries.iter().find(|e| e["name"] == "œuf").unwrap();
+    assert!(oeuf["aliases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|alias| alias == "oeuf"));
 }
 
 #[tokio::test]

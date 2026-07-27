@@ -4,6 +4,7 @@
 //! | Méthode | Route                          | Use case                          |
 //! |---------|--------------------------------|-----------------------------------|
 //! | GET     | `/shopping-list`               | lire la liste                     |
+//! | GET     | `/shopping-list/dictionary`    | dictionnaire (auto-complétion)    |
 //! | GET     | `/shopping-list/stream`        | flux SSE « la liste a changé »    |
 //! | POST    | `/shopping-list/generate`      | (re)générer depuis le calendrier  |
 //! | POST    | `/shopping-list/items`         | ajouter une ligne à la main       |
@@ -42,10 +43,12 @@ use crate::application::commands::{
     GenerateListCommand, GenerateListHandler, GenerateListResponse, ReorderCommand, ReorderHandler,
     ReorderResponse, UpdateItemCommand, UpdateItemHandler, UpdateItemResponse,
 };
-use crate::application::queries::{GetListHandler, GetListQuery, GetListResponse};
+use crate::application::queries::{
+    GetDictionaryHandler, GetDictionaryResponse, GetListHandler, GetListQuery, GetListResponse,
+};
 use crate::domain::{
-    CookedCountRecorder, PlannedIngredientsSource, ReferenceRepository, ShoppingItem,
-    ShoppingListRepository,
+    CookedCountRecorder, IngredientReference, PlannedIngredientsSource, ReferenceRepository,
+    ShoppingItem, ShoppingListRepository,
 };
 
 /// État injecté dans les routes de la liste de courses.
@@ -67,6 +70,7 @@ pub struct ShoppingListState {
 pub fn router(state: ShoppingListState) -> Router {
     Router::new()
         .route("/shopping-list", get(list))
+        .route("/shopping-list/dictionary", get(dictionary))
         .route("/shopping-list/stream", get(stream))
         .route("/shopping-list/generate", post(generate))
         .route("/shopping-list/reorder", post(reorder))
@@ -126,6 +130,31 @@ fn views(items: Vec<ShoppingItem>) -> Vec<ItemView> {
     items.into_iter().map(ItemView::from).collect()
 }
 
+/// Une entrée du dictionnaire exposée au front, qui s'en sert pour
+/// l'auto-complétion de la barre de saisie : le nom canonique s'affiche, les
+/// synonymes servent à retrouver l'entrée (« oeuf » → « œuf »), l'unité
+/// présélectionne le sélecteur de quantité.
+#[derive(Debug, Serialize)]
+struct DictionaryEntryView {
+    name: String,
+    category: String,
+    unit: Unit,
+    countable: bool,
+    aliases: Vec<String>,
+}
+
+impl From<IngredientReference> for DictionaryEntryView {
+    fn from(reference: IngredientReference) -> Self {
+        Self {
+            name: reference.name,
+            category: reference.category,
+            unit: reference.unit,
+            countable: reference.countable,
+            aliases: reference.aliases,
+        }
+    }
+}
+
 /// Corps de la génération : plage de jours inclusive.
 #[derive(Debug, Deserialize)]
 struct GenerateBody {
@@ -172,6 +201,25 @@ async fn list(user: AuthUser, State(state): State<ShoppingListState>) -> impl In
     match response {
         GetListResponse::Loaded(items) => (StatusCode::OK, Json(views(items))).into_response(),
         GetListResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `GET /shopping-list/dictionary` — dictionnaire d'ingrédients.
+///
+/// Global (aucun scope foyer) mais derrière l'authentification comme le reste
+/// de l'API. Le front le met en cache : c'est lui qui alimente les suggestions
+/// de la barre de saisie, aux côtés des articles déjà dans la liste.
+async fn dictionary(_user: AuthUser, State(state): State<ShoppingListState>) -> impl IntoResponse {
+    match GetDictionaryHandler::new(state.references.as_ref())
+        .handle()
+        .await
+    {
+        GetDictionaryResponse::Loaded(entries) => {
+            let views: Vec<DictionaryEntryView> =
+                entries.into_iter().map(DictionaryEntryView::from).collect();
+            (StatusCode::OK, Json(views)).into_response()
+        }
+        GetDictionaryResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }
 
@@ -258,7 +306,7 @@ async fn add(
     State(state): State<ShoppingListState>,
     Json(body): Json<AddBody>,
 ) -> impl IntoResponse {
-    let response = AddItemHandler::new(state.items.as_ref())
+    let response = AddItemHandler::new(state.items.as_ref(), state.references.as_ref())
         .handle(AddItemCommand {
             household_id: user.household_id(),
             name: body.name,

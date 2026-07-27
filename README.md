@@ -3,9 +3,11 @@
 PWA mobile-first pour un foyer : gérer ses recettes, planifier les repas de la
 semaine (midi / soir) et générer une liste de courses intelligente.
 
-**La spécificité :** la génération de la liste de courses convertit les grammages
-en unités achetables — `600 g de courgettes` devient `3 courgettes`, grâce à un
-référentiel versionné de poids moyens ([data/ingredients.yaml](data/ingredients.yaml)).
+**La spécificité :** la génération de la liste de courses parle un **dictionnaire
+d'ingrédients** versionné ([data/ingredients.yaml](data/ingredients.yaml)). Il
+rapproche les formulations des recettes d'un nom canonique — « Courgettes »,
+« courgette jaune » et « courgettes » ne font qu'une ligne — puis convertit les
+grammages en unités achetables : `600 g de courgettes` devient `3 courgettes`.
 
 > 🚧 **Statut : en construction.** L'API (auth, recettes) et la coquille PWA
 > tournent en local ; le parcours est ouvert en **mode public** le temps de
@@ -96,13 +98,26 @@ weekmeals import chemin/recette.yaml # importe un ou plusieurs fichiers
 weekmeals export --out ./mes-recettes  # un fichier .yaml par recette
 weekmeals export                     # ...ou sur stdout (documents séparés par ---)
 
-weekmeals seed-ingredients           # référentiel des poids moyens (global)
+weekmeals seed-ingredients           # dictionnaire d'ingrédients (global)
 ```
 
-Le **référentiel d'ingrédients** ([data/ingredients.yaml](data/ingredients.yaml))
-est global (pas par foyer) et alimente la conversion grammes → unités de la
-liste de courses. `seed-ingredients` fait un upsert par nom : le rejouer après
-avoir édité le fichier met simplement la base à jour.
+Le **dictionnaire d'ingrédients** ([data/ingredients.yaml](data/ingredients.yaml))
+est global (pas par foyer). Il donne à chaque produit un nom canonique, ses
+synonymes, son rayon, son unité d'achat et, le cas échéant, le poids moyen d'une
+pièce. Il alimente trois choses : le rapprochement des formulations, la
+conversion grammes → unités, et les suggestions de la barre de saisie.
+
+`seed-ingredients` fait un upsert par nom : le rejouer après avoir édité le
+fichier met simplement la base à jour. **Le serveur le rejoue aussi à chaque
+démarrage** (chemin surchargeable par `INGREDIENTS_FILE`), pour qu'un
+déploiement n'oublie jamais le vocabulaire de sa version.
+
+Le rapprochement d'un nom au dictionnaire est tolérant, du plus strict au plus
+souple : nom exact, puis clé canonique (casse, accents, ponctuation, mots vides,
+pluriels), puis clé produit (les qualificatifs de courses — « bio », « jaune »,
+« surgelé »… — sont retirés), puis proximité orthographique (« échalotte » →
+« échalote »). Un ingrédient absent du dictionnaire reste utilisable tel quel :
+il garde son nom et son unité, sans rayon ni conversion.
 
 L'import est **idempotent** : il fait un upsert par titre (dans le foyer), donc
 rejouer un seed ne crée pas de doublon.
@@ -252,10 +267,12 @@ fly ssh console -C "weekmeals device open-window --minutes 15"
 Saisir le code d'appairage affiché dans l'écran de connexion, depuis l'appareil
 à enrôler. Ensuite : `weekmeals device list` / `revoke <id>` / `close-window`.
 
-### Seed du référentiel et des recettes
+### Seed des recettes
+
+Le dictionnaire d'ingrédients est chargé au démarrage du serveur : il n'y a rien
+à lancer à la main. Les recettes de démonstration, si on les veut :
 
 ```sh
-fly ssh console -C "weekmeals seed-ingredients"
 fly ssh console -C "weekmeals seed --dir /app/data/recipes"
 ```
 
