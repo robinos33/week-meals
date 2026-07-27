@@ -148,11 +148,66 @@ describe("auto-complétion de l'ajout rapide", () => {
     expect(suggestions()).toHaveLength(0);
   });
 
+  it("s'ouvre à la frappe, pas à la simple prise de focus", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await user.click(await nameField());
+
+    expect(suggestions()).toHaveLength(0);
+  });
+
   it("ne propose rien quand la saisie ne ressemble à rien de connu", async () => {
     const user = userEvent.setup();
     renderScreen();
     await user.type(await nameField(), "zzz");
 
     expect(suggestions()).toHaveLength(0);
+  });
+});
+
+describe("auto-complétion de l'édition d'une ligne", () => {
+  /** Ouvre l'édition inline de la ligne nommée `name`. */
+  async function edit(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(await screen.findByLabelText(`Modifier ${name}`));
+    return screen.getByLabelText("Nom");
+  }
+
+  it("ne se propose pas de suggestions avant qu'on ait tapé", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await edit(user, "courgette");
+
+    // Le champ est prérempli et prend le focus : la liste doit rester fermée.
+    expect(suggestions()).toHaveLength(0);
+  });
+
+  it("corrige un nom mal orthographié depuis le dictionnaire", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const field = await edit(user, "courgette");
+
+    await user.clear(field);
+    await user.type(field, "farin");
+    await user.click(await findSuggestion(/farine/));
+
+    expect(field).toHaveValue("farine");
+    // L'unité suit le produit choisi — celle du formulaire d'édition, pas
+    // celle de l'ajout rapide qui vit au-dessus.
+    const form = field.closest("form") as HTMLFormElement;
+    expect(within(form).getByLabelText("Unité")).toHaveValue("g");
+  });
+
+  it("écarte la ligne éditée de ses propres suggestions", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    const field = await edit(user, "lait");
+
+    await user.clear(field);
+    await user.type(field, "lait");
+
+    // Reste « lait de coco » (dictionnaire), mais pas la ligne elle-même.
+    const labels = suggestions().map((option) => option.textContent ?? "");
+    expect(labels.some((label) => /lait de coco/.test(label))).toBe(true);
+    expect(labels.some((label) => /déjà/.test(label))).toBe(false);
   });
 });
