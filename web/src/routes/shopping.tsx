@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -16,15 +17,18 @@ import {
   useClearChecked,
   useDeleteItem,
   sameCombo,
+  useIngredientDictionary,
   useReorderItems,
   useShoppingList,
   useShoppingSync,
   useUpdateItem,
+  type DictionaryEntry,
   type ShoppingItem,
   type SyncState,
   type Unit,
 } from "../api/shopping-list";
 import { foodEmoji } from "../lib/food-emoji";
+import { canonicalKey, rankMatches } from "../lib/ingredient-match";
 import { parseAmount } from "../lib/quantity";
 import "./screens.css";
 
@@ -276,8 +280,46 @@ function QuantityStepper({
   );
 }
 
+/** Libellé lisible d'un rayon du dictionnaire. */
+const CATEGORY_LABELS: Record<string, string> = {
+  legumes: "Légumes",
+  fruits: "Fruits",
+  cremerie: "Crèmerie",
+  boucherie: "Boucherie",
+  poissonnerie: "Poissonnerie",
+  epicerie: "Épicerie",
+  boulangerie: "Boulangerie",
+  surgeles: "Surgelés",
+  boissons: "Boissons",
+  entretien: "Entretien",
+};
+
+/** Nombre de suggestions affichées : au-delà, la liste masque l'écran. */
+const MAX_SUGGESTIONS = 6;
+
+/** Une proposition d'auto-complétion, venue de la liste ou du dictionnaire. */
+interface Suggestion {
+  /** Libellé affiché et inséré dans le champ. */
+  name: string;
+  /** Synonymes reconnus à la frappe (dictionnaire). */
+  aliases?: string[];
+  /** Unité présélectionnée à la sélection. */
+  unit: Unit;
+  /** Rayon, pour les entrées du dictionnaire. */
+  category?: string;
+  /** Ligne déjà dans la liste : la quantité s'y cumulera. */
+  existing?: ShoppingItem;
+}
+
 /**
  * Champ d'ajout rapide, toujours accessible en haut de l'écran.
+ *
+ * La saisie est **auto-complétée** à deux sources : d'abord les articles déjà
+ * dans la liste — c'est là que la quantité se cumulera, on les fait donc passer
+ * devant —, puis le dictionnaire d'ingrédients de l'API. Le rapprochement
+ * tolère casse, accents, pluriels, qualificatifs et fautes de frappe (cf.
+ * `lib/ingredient-match`), avec les mêmes règles que le serveur : la ligne
+ * proposée est bien celle sur laquelle l'ajout atterrira.
  *
  * Un ingrédient déjà présent (non coché) n'est jamais dupliqué : l'API cumule
  * la quantité sur la ligne existante (« courgette 3 » + « courgette 2 » →
@@ -298,6 +340,79 @@ function QuickAdd({
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("1");
   const [unit, setUnit] = useState<Unit>("piece");
+  const dictionary = useIngredientDictionary();
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Suggestion mise en avant au clavier (-1 = aucune, la saisie fait foi).
+  const [highlight, setHighlight] = useState(-1);
+  const [open, setOpen] = useState(false);
+
+  // Candidats : la liste courante d'abord, puis le dictionnaire dont on retire
+  // ce qui est déjà en liste (sinon « courgette » apparaîtrait deux fois).
+  const candidates = useMemo<Suggestion[]>(() => {
+    const fromList: Suggestion[] = items.map((item) => ({
+      name: item.name,
+      unit: item.unit,
+      existing: item,
+    }));
+    const listed = new Set(fromList.map((suggestion) => canonicalKey(suggestion.name)));
+    const fromDictionary = (dictionary.data ?? [])
+      .filter((entry: DictionaryEntry) => !listed.has(canonicalKey(entry.name)))
+      .map((entry: DictionaryEntry) => ({
+        name: entry.name,
+        aliases: entry.aliases,
+        unit: entry.unit,
+        category: entry.category,
+      }));
+    return [...fromList, ...fromDictionary];
+  }, [items, dictionary.data]);
+
+  const suggestions = useMemo(
+    // Le bonus fait remonter les articles de la liste à pertinence comparable.
+    () =>
+      rankMatches(name, candidates, (candidate) => (candidate.existing ? 0.3 : 0)).slice(
+        0,
+        MAX_SUGGESTIONS,
+      ),
+    [name, candidates],
+  );
+
+  const showSuggestions = open && suggestions.length > 0;
+
+  /** Reprend une suggestion : nom et unité, prêt à valider. */
+  function choose(suggestion: Suggestion) {
+    setName(suggestion.name);
+    setUnit(suggestion.unit);
+    setOpen(false);
+    setHighlight(-1);
+    inputRef.current?.focus();
+  }
+
+  function onNameChange(value: string) {
+    setName(value);
+    setHighlight(-1);
+    setOpen(true);
+  }
+
+  /** Navigation clavier dans la liste (le tactile passe par le tap). */
+  function onNameKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setOpen(false);
+      setHighlight(-1);
+      return;
+    }
+    if (!showSuggestions) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlight((current) => (current + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlight((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
+    } else if (event.key === "Enter" && highlight >= 0) {
+      // Entrée valide la suggestion mise en avant plutôt que le formulaire.
+      event.preventDefault();
+      choose(suggestions[highlight]);
+    }
+  }
 
   // Candidat courant (null tant que la saisie n'est pas valide). La quantité
   // accepte les fractions (« 1/2 », « 1 1/2 », « 0,5 »).
@@ -317,6 +432,8 @@ function QuickAdd({
   function reset() {
     setName("");
     setAmount("1");
+    setOpen(false);
+    setHighlight(-1);
   }
 
   function restore(item: ShoppingItem) {
@@ -337,13 +454,59 @@ function QuickAdd({
 
   return (
     <form className="quick-add" onSubmit={submit}>
-      <input
-        className="input quick-add__name"
-        placeholder="Ajouter un article…"
-        aria-label="Nom de l'article"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
+      <div className="quick-add__field">
+        <input
+          ref={inputRef}
+          className="input quick-add__name"
+          placeholder="Ajouter un article…"
+          aria-label="Nom de l'article"
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          onKeyDown={onNameKeyDown}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          role="combobox"
+          aria-expanded={showSuggestions}
+          aria-controls="quick-add-suggestions"
+          aria-autocomplete="list"
+          aria-activedescendant={
+            highlight >= 0 ? `quick-add-suggestion-${highlight}` : undefined
+          }
+          autoComplete="off"
+        />
+        {showSuggestions && (
+          <ul className="suggestions" id="quick-add-suggestions" role="listbox">
+            {suggestions.map((suggestion, index) => (
+              <li key={`${suggestion.existing?.id ?? "dict"}-${suggestion.name}`}>
+                <button
+                  type="button"
+                  id={`quick-add-suggestion-${index}`}
+                  className="suggestions__option"
+                  role="option"
+                  aria-selected={index === highlight}
+                  data-highlighted={index === highlight}
+                  // Le clic doit gagner contre le `blur` du champ, qui referme
+                  // la liste : on choisit dès l'appui, sans laisser le focus.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => choose(suggestion)}
+                >
+                  <span className="suggestions__emoji" aria-hidden="true">
+                    {foodEmoji(suggestion.name) ?? "•"}
+                  </span>
+                  <span className="suggestions__name">{suggestion.name}</span>
+                  <span className="suggestions__hint">
+                    {suggestion.existing
+                      ? `déjà ${formatQuantity(suggestion.existing)}${
+                          suggestion.existing.checked ? " (coché)" : " — sera cumulé"
+                        }`
+                      : (CATEGORY_LABELS[suggestion.category ?? ""] ?? "")}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
       <select
         className="input input--unit"

@@ -128,10 +128,11 @@ pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateErro
     sqlx::migrate!("../migrations").run(pool).await
 }
 
-/// Dictionnaire d'ingrédients versionné, relatif au répertoire de travail
-/// (`/app` dans l'image, la racine du dépôt en dev). Surchargeable par
-/// `INGREDIENTS_FILE`.
-const DEFAULT_INGREDIENTS_FILE: &str = "data/ingredients.yaml";
+/// Emplacements essayés pour le dictionnaire versionné, dans l'ordre :
+/// depuis la racine du dépôt (image Docker, `cargo run` documenté) puis depuis
+/// `api/` (`cd api && cargo run`). `INGREDIENTS_FILE` court-circuite les deux.
+const INGREDIENTS_FILE_CANDIDATES: [&str; 2] =
+    ["data/ingredients.yaml", "../data/ingredients.yaml"];
 
 /// Rejoue le seed du dictionnaire d'ingrédients au démarrage.
 ///
@@ -144,9 +145,29 @@ const DEFAULT_INGREDIENTS_FILE: &str = "data/ingredients.yaml";
 /// courses fonctionne toujours — elle perd le rapprochement des formulations
 /// et les suggestions de saisie, pas l'essentiel.
 pub async fn seed_ingredient_dictionary(pool: &SqlitePool) {
-    let path =
-        std::env::var("INGREDIENTS_FILE").unwrap_or_else(|_| DEFAULT_INGREDIENTS_FILE.to_owned());
-    match shopping_list::infrastructure::seed::seed_from_file(pool, std::path::Path::new(&path))
+    let configured = std::env::var("INGREDIENTS_FILE").ok();
+    let candidates: Vec<String> = configured.map_or_else(
+        || {
+            INGREDIENTS_FILE_CANDIDATES
+                .iter()
+                .map(|path| (*path).to_owned())
+                .collect()
+        },
+        |path| vec![path],
+    );
+
+    let Some(path) = candidates
+        .iter()
+        .find(|path| std::path::Path::new(path).exists())
+    else {
+        tracing::warn!(
+            "dictionnaire d'ingrédients introuvable ({})",
+            candidates.join(", ")
+        );
+        return;
+    };
+
+    match shopping_list::infrastructure::seed::seed_from_file(pool, std::path::Path::new(path))
         .await
     {
         Ok(count) => tracing::info!("dictionnaire d'ingrédients à jour ({count} entrées)"),
