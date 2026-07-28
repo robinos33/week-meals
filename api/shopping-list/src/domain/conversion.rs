@@ -4,9 +4,10 @@
 //!
 //! Étapes :
 //!
-//! 1. **Rapprocher** chaque nom du dictionnaire : « Courgettes », « courgette
-//!    jaune » et « courgettes » désignent le même légume et se regroupent sous
-//!    son nom canonique (cf. [`ReferenceCatalog::resolve`]).
+//! 1. **Rapprocher** chaque nom du dictionnaire : « Courgettes », « grosses
+//!    courgettes » et « courgettes » désignent le même légume et se regroupent
+//!    sous son nom canonique (cf. [`ReferenceCatalog::resolve`]). Une couleur,
+//!    en revanche, nomme une variété : « poivron rouge » garde sa ligne.
 //! 2. **Agréger** les quantités d'un même ingrédient sur toutes les recettes
 //!    planifiées (600 g + 300 g de courgettes → 900 g).
 //! 3. **Convertir** via le dictionnaire : `900 g ÷ 250 g/pièce → 4 courgettes`
@@ -102,8 +103,8 @@ impl<'a> Aggregate<'a> {
 /// courses achetables.
 ///
 /// Les quantités d'un même ingrédient sont cumulées, les formulations étant
-/// d'abord rapprochées du dictionnaire (« Courgettes » et « courgette jaune »
-/// tombent sur la même ligne). Un ingrédient **doté d'un poids moyen** est
+/// d'abord rapprochées du dictionnaire (« Courgettes » et « courgettes bio »
+/// tombent sur la même ligne, « poivron rouge » et « poivron jaune » non). Un ingrédient **doté d'un poids moyen** est
 /// rendu en pièces (arrondi supérieur) ; les autres sont rendus dans l'unité de
 /// base de chaque dimension présente. Les lignes de quantité nulle sont omises.
 /// L'ordre de sortie suit la première apparition de chaque ingrédient.
@@ -371,7 +372,7 @@ mod tests {
         // trois recettes ne font qu'une ligne. 600 + 250 + 250 = 1100 g → 5.
         let planned = [
             PlannedIngredient::new("Courgettes", g(600.0)),
-            PlannedIngredient::new("courgette jaune", g(250.0)),
+            PlannedIngredient::new("grosses courgettes bio", g(250.0)),
             PlannedIngredient::new("COURGETTE", g(250.0)),
         ];
         let items = aggregate_purchases(&planned, &catalog());

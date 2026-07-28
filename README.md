@@ -6,7 +6,8 @@ semaine (midi / soir) et générer une liste de courses intelligente.
 **La spécificité :** la génération de la liste de courses parle un **dictionnaire
 d'ingrédients** versionné ([data/ingredients.yaml](data/ingredients.yaml)). Il
 rapproche les formulations des recettes d'un nom canonique — « Courgettes »,
-« courgette jaune » et « courgettes » ne font qu'une ligne — puis convertit les
+« grosses courgettes bio » et « courgettes » ne font qu'une ligne, tandis que
+« poivron rouge » et « poivron jaune » gardent la leur — puis convertit les
 grammages en unités achetables : `600 g de courgettes` devient `3 courgettes`.
 
 > 🚧 **Statut : en construction.** L'API (auth, recettes) et la coquille PWA
@@ -114,10 +115,18 @@ déploiement n'oublie jamais le vocabulaire de sa version.
 
 Le rapprochement d'un nom au dictionnaire est tolérant, du plus strict au plus
 souple : nom exact, puis clé canonique (casse, accents, ponctuation, mots vides,
-pluriels), puis clé produit (les qualificatifs de courses — « bio », « jaune »,
-« surgelé »… — sont retirés), puis proximité orthographique (« échalotte » →
-« échalote »). Un ingrédient absent du dictionnaire reste utilisable tel quel :
-il garde son nom et son unité, sans rayon ni conversion.
+pluriels), puis clé produit (les qualificatifs qui ne changent pas l'achat —
+« bio », « grosses », « bien mûres »… — sont retirés), puis proximité
+orthographique (« échalotte » → « échalote »). Un ingrédient absent du
+dictionnaire reste utilisable tel quel : il garde son nom et son unité, sans
+rayon ni conversion.
+
+Ce que le rapprochement ne fait **jamais**, c'est confondre deux produits
+différents : une **couleur nomme une variété**, pas un état. « poivron rouge »,
+« poivron jaune » et « poivron » sont trois courses distinctes, et chacune a son
+entrée au dictionnaire — comme « oignon rouge », « chou rouge », « abricot sec »
+ou « lait de coco ». Une déclinaison qui n'y figure pas garde simplement le nom
+saisi, sans rayon.
 
 L'import est **idempotent** : il fait un upsert par titre (dans le foyer), donc
 rejouer un seed ne crée pas de doublon.

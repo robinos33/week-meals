@@ -25,12 +25,21 @@ describe("canonicalKey", () => {
 
 describe("coreKey", () => {
   it("retire les qualificatifs de courses", () => {
-    expect(coreKey("courgettes jaunes")).toBe("courgette");
+    expect(coreKey("grosses courgettes")).toBe("courgette");
     expect(coreKey("Œufs bio")).toBe("oeuf");
+    expect(coreKey("tomates bien mûres")).toBe("tomate");
+  });
+
+  it("garde les couleurs, qui nomment une variété", () => {
+    expect(coreKey("poivron rouge")).toBe("poivron rouge");
+    expect(coreKey("poivrons jaunes")).not.toBe(coreKey("poivron"));
+    expect(coreKey("oignon rouge")).not.toBe(coreKey("oignon"));
   });
 
   it("garde les mots qui changent le produit", () => {
     expect(coreKey("lait de coco")).toBe("lait coco");
+    expect(coreKey("abricots secs")).toBe("abricot sec");
+    expect(coreKey("café moulu")).toBe("cafe moulu");
   });
 });
 
@@ -63,8 +72,17 @@ describe("matchScore", () => {
     expect(matchScore("oeuf", "œuf", ["oeuf"])).toBe(1);
   });
 
-  it("ignore les qualificatifs", () => {
-    expect(matchScore("courgettes jaunes", "courgette")).toBeGreaterThan(0.8);
+  it("ignore les qualificatifs qui ne changent pas le produit", () => {
+    expect(matchScore("grosses courgettes bio", "courgette")).toBeGreaterThan(0.8);
+  });
+
+  it("ne rabat pas une couleur sur le produit générique", () => {
+    // Saisie complète : « poivron rouge » n'est pas « poivron ».
+    expect(matchScore("poivron rouge", "poivron")).toBeNull();
+    expect(matchScore("poivron rouge", "poivron rouge")).toBe(1);
+    // En cours de frappe, le générique reste proposé — on ne sait pas encore
+    // ce qui suit.
+    expect(matchScore("poivron r", "poivron")).not.toBeNull();
   });
 
   it("tolère une faute de frappe", () => {

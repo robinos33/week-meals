@@ -107,7 +107,7 @@ describe("auto-complétion de l'ajout rapide", () => {
   it("tolère pluriel, accents et qualificatifs", async () => {
     const user = userEvent.setup();
     renderScreen();
-    await user.type(await nameField(), "Courgettes jaunes");
+    await user.type(await nameField(), "Grosses courgettes bio");
 
     expect(await findSuggestion(/courgette/)).toBeInTheDocument();
   });

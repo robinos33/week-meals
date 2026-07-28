@@ -6,8 +6,9 @@
 //! par [`ReferenceCatalog::resolve`], qui applique les trois niveaux de
 //! tolérance du module [`matching`](super::matching) : clé canonique, clé
 //! produit (qualificatifs retirés), puis proximité orthographique. C'est ce qui
-//! évite trois lignes « Courgettes », « courgette jaune » et « courgettes »
-//! pour un seul légume.
+//! évite trois lignes « Courgettes », « grosses courgettes » et « courgettes »
+//! pour un seul légume — sans pour autant confondre un poivron rouge avec un
+//! poivron jaune, qui sont deux courses distinctes.
 //!
 //! Un ingrédient **absent** du dictionnaire reste parfaitement utilisable :
 //! il garde son nom et son unité d'origine, simplement sans rayon ni
@@ -146,7 +147,7 @@ impl ReferenceCatalog {
     ///
     /// 1. nom exact (`"Courgette"`) ;
     /// 2. clé canonique du nom ou d'un synonyme (`"courgettes"`, `"œufs"`) ;
-    /// 3. clé produit, qualificatifs retirés (`"courgettes jaunes"`) ;
+    /// 3. clé produit, qualificatifs retirés (`"grosses courgettes bio"`) ;
     /// 4. proximité orthographique (`"échalotte"`).
     ///
     /// L'ordre compte : une entrée exacte doit toujours l'emporter sur un
@@ -271,6 +272,8 @@ mod tests {
             IngredientReference::new("tomate cerise", "legumes", 15, false),
             IngredientReference::new("échalote", "legumes", 40, false),
             IngredientReference::new("œuf", "cremerie", 55, true).with_aliases(["oeuf", "œufs"]),
+            IngredientReference::new("poivron", "legumes", 160, false),
+            IngredientReference::new("poivron rouge", "legumes", 160, false),
             IngredientReference::bulk("lait", "cremerie", Unit::Ml),
             IngredientReference::bulk("lait de coco", "epicerie", Unit::Ml),
         ])
@@ -328,10 +331,24 @@ mod tests {
     fn resolve_strips_qualifiers() {
         let catalog = catalog();
         assert_eq!(
-            catalog.resolve("courgettes jaunes").unwrap().name,
+            catalog.resolve("grosses courgettes").unwrap().name,
             "courgette"
         );
         assert_eq!(catalog.resolve("œufs bio").unwrap().name, "œuf");
+    }
+
+    #[test]
+    fn resolve_keeps_colour_variants_apart() {
+        // Une couleur nomme une variété : sans entrée dédiée, la formulation
+        // n'est **pas** rabattue sur le produit générique — on n'achètera pas
+        // un poivron jaune pour un poivron rouge.
+        let catalog = catalog();
+        assert_eq!(
+            catalog.resolve("poivron rouge").unwrap().name,
+            "poivron rouge"
+        );
+        assert!(catalog.resolve("poivron jaune").is_none());
+        assert_eq!(catalog.resolve("poivron").unwrap().name, "poivron");
     }
 
     #[test]
@@ -347,13 +364,14 @@ mod tests {
     #[test]
     fn resolve_keeps_distinct_products_apart() {
         // « lait de coco » n'est pas du lait : les mots supplémentaires ne sont
-        // pas des qualificatifs, l'entrée dédiée gagne.
+        // pas des qualificatifs, l'entrée dédiée gagne. « demi-écrémé » non
+        // plus — c'est une brique différente de celle du lait entier.
         let catalog = catalog();
         assert_eq!(
             catalog.resolve("lait de coco").unwrap().name,
             "lait de coco"
         );
-        assert_eq!(catalog.resolve("lait demi-écrémé").unwrap().name, "lait");
+        assert!(catalog.resolve("lait demi-écrémé").is_none());
     }
 
     #[test]

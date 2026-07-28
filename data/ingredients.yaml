@@ -3,8 +3,9 @@
 # Il sert trois choses :
 #
 #   1. **Rapprocher** les formulations des recettes d'un nom canonique unique
-#      (« Courgettes », « courgette jaune », « courgettes » → `courgette`), pour
-#      que la liste de courses ne montre qu'une ligne par produit.
+#      (« Courgettes », « grosses courgettes bio » → `courgette`), pour que la
+#      liste de courses ne montre qu'une ligne par produit — sans confondre
+#      deux produits différents (cf. « déclinaisons » plus bas).
 #   2. **Convertir** les grammages en unités achetables : 600 g de courgettes
 #      → 3 courgettes (arrondi supérieur).
 #   3. **Suggérer** les noms à la saisie manuelle, avec le bon rayon et la
@@ -25,12 +26,29 @@
 # - `unit`            : unité proposée à la saisie manuelle (`g`, `kg`, `ml`,
 #                       `l`, `piece`). Défaut : `piece` avec un poids moyen,
 #                       `g` sinon.
-# - `aliases`         : synonymes et formulations rencontrées dans les
-#                       recettes. Inutile d'y mettre les pluriels, les accents
-#                       ou les majuscules — le rapprochement les gère seul, de
-#                       même que les qualificatifs (« bio », « frais »,
-#                       « jaune », « surgelé »…) et les fautes de frappe
-#                       proches (« échalotte » → « échalote »).
+# - `aliases`         : **autres noms du même achat** (« ognon », « lime »,
+#                       « escalope de poulet »). Inutile d'y mettre les
+#                       pluriels, les accents ou les majuscules — le
+#                       rapprochement les gère seul, de même que les
+#                       qualificatifs qui ne changent pas le produit (« bio »,
+#                       « frais », « grosses », « bien mûres »…) et les fautes
+#                       de frappe proches (« échalotte » → « échalote »).
+#
+# ## Déclinaisons : une entrée par produit réellement différent
+#
+# Une **couleur nomme une variété**, pas un état : « poivron rouge », « poivron
+# jaune » et « poivron » sont trois courses distinctes, et chacune a donc SON
+# entrée ici. Il en va de même de tout ce qui change ce qu'on met dans le
+# caddie : « oignon nouveau », « abricot sec », « café moulu », « lait de
+# coco ». Mettre l'une en `aliases` d'une autre les ferait fusionner — et
+# acheter le mauvais produit.
+#
+# À l'inverse, une formulation qui désigne bien le produit générique a sa place
+# en `aliases` (« salade verte » → `salade`).
+#
+# Une déclinaison absente d'ici n'est jamais rabattue de force sur le générique :
+# elle reste dans la liste sous le nom saisi, simplement sans rayon. L'ajouter
+# ici lui donne son rayon et la fait remonter dans les suggestions.
 #
 # Fichier versionné, source de vérité : il est rejoué en base (upsert par nom)
 # au démarrage du serveur et par `weekmeals seed-ingredients`.
@@ -62,10 +80,28 @@ ingredients:
   - name: poivron
     category: legumes
     avg_weight_g: 160
+  - name: poivron rouge
+    category: legumes
+    avg_weight_g: 160
+  - name: poivron jaune
+    category: legumes
+    avg_weight_g: 160
+  - name: poivron vert
+    category: legumes
+    avg_weight_g: 160
   - name: oignon
     category: legumes
     avg_weight_g: 110
-    aliases: [oignon jaune, ognon]
+    aliases: [ognon]
+  - name: oignon jaune
+    category: legumes
+    avg_weight_g: 110
+  - name: oignon rouge
+    category: legumes
+    avg_weight_g: 110
+  - name: oignon blanc
+    category: legumes
+    avg_weight_g: 110
   - name: oignon nouveau
     category: legumes
     avg_weight_g: 30
@@ -100,7 +136,15 @@ ingredients:
   - name: chou
     category: legumes
     avg_weight_g: 900
-    aliases: [chou vert, chou blanc]
+  - name: chou vert
+    category: legumes
+    avg_weight_g: 900
+  - name: chou blanc
+    category: legumes
+    avg_weight_g: 900
+  - name: chou rouge
+    category: legumes
+    avg_weight_g: 900
   - name: poireau
     category: legumes
     avg_weight_g: 200
@@ -112,7 +156,7 @@ ingredients:
     category: legumes
     avg_weight_g: 350
     countable: true
-    aliases: [laitue, batavia, sucrine]
+    aliases: [laitue, batavia, sucrine, salade verte]
   - name: épinard
     category: legumes
     unit: g
@@ -217,6 +261,12 @@ ingredients:
   - name: raisin
     category: fruits
     unit: g
+  - name: raisin blanc
+    category: fruits
+    unit: g
+  - name: raisin noir
+    category: fruits
+    unit: g
   - name: pêche
     category: fruits
     avg_weight_g: 150
@@ -291,7 +341,11 @@ ingredients:
   - name: poulet
     category: boucherie
     unit: g
-    aliases: [blanc de poulet, filet de poulet, escalope de poulet]
+    aliases: [poulet entier]
+  - name: blanc de poulet
+    category: boucherie
+    unit: g
+    aliases: [filet de poulet, escalope de poulet]
   - name: cuisse de poulet
     category: boucherie
     avg_weight_g: 200
@@ -430,7 +484,7 @@ ingredients:
   - name: chocolat noir
     category: epicerie
     unit: g
-    aliases: [chocolat, chocolat pâtissier]
+    aliases: [chocolat pâtissier]
   - name: miel
     category: epicerie
     unit: g

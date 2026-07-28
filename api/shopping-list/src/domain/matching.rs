@@ -2,22 +2,27 @@
 //! de normalisation et de proximité.
 //!
 //! Deux recettes ne nomment pas la même chose de la même façon — « Courgettes »,
-//! « courgette jaune », « oeufs », « échalotte ». Sans rapprochement, la liste
-//! de courses se retrouve avec trois lignes pour un seul légume, et l'ajout
-//! manuel ne cumule pas sur la ligne existante. Ce module ramène ces variantes
-//! à une **clé commune**, en trois niveaux de tolérance :
+//! « grosses courgettes », « oeufs », « échalotte ». Sans rapprochement, la
+//! liste de courses se retrouve avec trois lignes pour un seul légume, et
+//! l'ajout manuel ne cumule pas sur la ligne existante. Ce module ramène ces
+//! variantes à une **clé commune**, en trois niveaux de tolérance :
 //!
 //! 1. [`canonical_key`] — casse, accents, ponctuation, mots vides et pluriels
-//!    (« Œufs bio » → `oeuf bio`) ;
-//! 2. [`core_key`] — en plus, les qualificatifs de courses (couleur, calibre,
-//!    préparation) sont retirés (« courgettes jaunes » → `courgette`) ;
+//!    (« Œufs » → `oeuf`) ;
+//! 2. [`core_key`] — en plus, les qualificatifs qui ne changent pas le produit
+//!    acheté (calibre, maturité, bio…) sont retirés (« grosses courgettes bio »
+//!    → `courgette`) ;
 //! 3. [`similarity`] — distance de Levenshtein normalisée, pour les fautes de
 //!    frappe et les orthographes flottantes (« échalotte » ≈ « échalote »).
 //!
-//! Les qualificatifs ne sont **pas** de simples mots vides : les retirer d'abord
-//! (niveau 2) ferait de « lait de coco » un « lait ». La séparation des niveaux
-//! est ce qui permet à [`ReferenceCatalog::resolve`](super::ReferenceCatalog::resolve)
-//! de préférer une entrée exacte avant d'élargir.
+//! Le niveau 2 est le plus délicat : trop gourmand, il fait acheter le mauvais
+//! produit. Une **couleur nomme une variété**, pas un état — « poivron rouge »,
+//! « poivron jaune » et « poivron » sont trois courses différentes, au même
+//! titre que « lait de coco » n'est pas du lait. D'où une liste de
+//! qualificatifs délibérément courte (cf. [`QUALIFIERS`]) et la séparation des
+//! niveaux, qui permet à
+//! [`ReferenceCatalog::resolve`](super::ReferenceCatalog::resolve) de préférer
+//! une entrée exacte avant d'élargir.
 
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
@@ -29,74 +34,30 @@ const STOP_WORDS: &[&str] = &[
     "de", "du", "des", "d", "la", "le", "les", "l", "au", "aux", "a", "en", "et", "un", "une",
 ];
 
-/// Qualificatifs qui ne changent pas le produit à acheter : couleur, calibre,
-/// état, préparation. Retirés au niveau [`core_key`] seulement — « courgette
-/// jaune » est une courgette, alors que « lait de coco » n'est pas un lait.
+/// Qualificatifs qui ne changent **pas ce qu'on met dans le caddie** : calibre,
+/// maturité, mode de culture, découpe faite à la maison. Eux seuls sont retirés
+/// au niveau [`core_key`].
+///
+/// La règle, et elle est stricte : un mot n'entre ici que si l'on repartirait
+/// du magasin avec le **même produit** sans lui. Sont donc exclus, même s'ils
+/// ressemblent à des adjectifs anodins :
+///
+/// * les **couleurs** — un poivron rouge n'est pas un poivron jaune, un oignon
+///   rouge n'est pas un oignon, un chou rouge n'est pas un chou vert ;
+/// * les **variétés et états d'achat** — « nouveau » (oignon nouveau),
+///   « sec » (abricot sec, tomate séchée), « doux » (piment doux),
+///   « entier » / « demi-écrémé » (lait), « surgelé » (autre rayon) ;
+/// * les **formes vendues telles quelles** — « moulu » (café), « râpé »
+///   (fromage), « concassé » (tomate) : ce sont des produits à part, présents
+///   au dictionnaire sous leur propre nom.
+///
+/// Dans le doute, on n'ajoute rien : deux lignes de trop se suppriment d'un
+/// geste en rayon, tandis qu'une fusion abusive fait acheter le mauvais
+/// produit.
 const QUALIFIERS: &[&str] = &[
-    "bio",
-    "frais",
-    "fraiche",
-    "surgele",
-    "surgelee",
-    "congele",
-    "congelee",
-    "sec",
-    "seche",
-    "sechee",
-    "entier",
-    "entiere",
-    "gros",
-    "grosse",
-    "petit",
-    "petite",
-    "moyen",
-    "moyenne",
-    "grand",
-    "grande",
-    "moulu",
-    "moulue",
-    "rape",
-    "rapee",
-    "concasse",
-    "concassee",
-    "emince",
-    "emincee",
-    "coupe",
-    "coupee",
-    "cru",
-    "crue",
-    "cuit",
-    "cuite",
-    "mur",
-    "mure",
-    "nouveau",
-    "nouvelle",
-    "nature",
-    "extra",
-    "fin",
-    "fine",
-    "doux",
-    "douce",
-    "rouge",
-    "jaune",
-    "vert",
-    "verte",
-    "blanc",
-    "blanche",
-    "noir",
-    "noire",
-    "long",
-    "longue",
-    "rond",
-    "ronde",
-    "bien",
-    "demi",
-    "ecreme",
-    "ecremee",
-    "pasteurise",
-    "pasteurisee",
-    "allege",
-    "allegee",
+    "bio", "frais", "fraiche", "gros", "grosse", "petit", "petite", "moyen", "moyenne", "grand",
+    "grande", "fin", "fine", "long", "longue", "rond", "ronde", "emince", "emincee", "coupe",
+    "coupee", "cru", "crue", "cuit", "cuite", "mur", "mure", "bien", "nature", "extra",
 ];
 
 /// Seuil de similarité au-delà duquel deux noms désignent le même produit.
@@ -169,7 +130,8 @@ pub fn canonical_key(name: &str) -> String {
     tokens(name).join(" ")
 }
 
-/// Clé « produit », qualificatifs retirés : « courgettes jaunes » → `courgette`.
+/// Clé « produit », qualificatifs retirés : « grosses courgettes » → `courgette`.
+/// Les couleurs, elles, sont conservées : « poivron rouge » reste distinct.
 ///
 /// Vide si le nom n'était **que** des qualificatifs (« bio ») : l'appelant
 /// retombe alors sur [`canonical_key`], on ne rapproche pas sur du vide.
@@ -268,9 +230,20 @@ mod tests {
 
     #[test]
     fn core_key_strips_shopping_qualifiers() {
-        assert_eq!(core_key("courgettes jaunes"), "courgette");
+        assert_eq!(core_key("grosses courgettes"), "courgette");
         assert_eq!(core_key("Œufs bio"), "oeuf");
-        assert_eq!(core_key("carottes nouvelles"), "carotte");
+        assert_eq!(core_key("tomates bien mûres"), "tomate");
+        assert_eq!(core_key("oignons émincés"), "oignon");
+    }
+
+    #[test]
+    fn core_key_keeps_colours_which_name_a_variety() {
+        // Le nerf du sujet : trois courses différentes, trois clés différentes.
+        assert_eq!(core_key("poivron rouge"), "poivron rouge");
+        assert_eq!(core_key("poivrons jaunes"), "poivron jaune");
+        assert_eq!(core_key("poivron"), "poivron");
+        assert_ne!(core_key("oignon rouge"), core_key("oignon"));
+        assert_ne!(core_key("chou rouge"), core_key("chou vert"));
     }
 
     #[test]
@@ -278,6 +251,11 @@ mod tests {
         // « coco » n'est pas un qualificatif : le lait de coco reste distinct.
         assert_eq!(core_key("lait de coco"), "lait coco");
         assert_eq!(core_key("pomme de terre"), "pomme terre");
+        // Ni l'état d'achat : ce sont des produits à part entière.
+        assert_eq!(core_key("abricots secs"), "abricot sec");
+        assert_eq!(core_key("café moulu"), "cafe moulu");
+        assert_eq!(core_key("lait demi-écrémé"), "lait demi ecreme");
+        assert_eq!(core_key("oignon nouveau"), "oignon nouveau");
     }
 
     #[test]

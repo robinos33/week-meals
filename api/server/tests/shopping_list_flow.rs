@@ -369,7 +369,10 @@ async fn the_dictionary_reconciles_recipe_wordings() {
     let poelee = create_recipe_with(
         &router,
         "Poêlée",
-        &[("courgette jaune", 300.0, "g"), ("œuf", 1.0, "piece")],
+        &[
+            ("grosses courgettes bio", 300.0, "g"),
+            ("œuf", 1.0, "piece"),
+        ],
     )
     .await;
     plan(&router, "2026-07-13", "dinner", &gratin).await;
@@ -396,6 +399,47 @@ async fn the_dictionary_reconciles_recipe_wordings() {
     assert_eq!(items.len(), 2, "toujours pas de doublon");
     let courgette = items.iter().find(|i| i["name"] == "courgette").unwrap();
     assert_eq!(courgette["amount"], 6.0);
+}
+
+#[tokio::test]
+async fn colour_variants_stay_distinct_from_the_generic_product() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool.clone(), store, &config);
+    seed_dictionary(&pool).await;
+
+    // Une recette qui distingue les couleurs doit donner autant de lignes :
+    // une couleur nomme une variété, pas un état.
+    let piperade = create_recipe_with(
+        &router,
+        "Pipérade",
+        &[
+            ("poivrons rouges", 2.0, "piece"),
+            ("poivron jaune", 1.0, "piece"),
+            ("oignon rouge", 1.0, "piece"),
+        ],
+    )
+    .await;
+    plan(&router, "2026-07-13", "dinner", &piperade).await;
+    let items = generate(&router, "2026-07-13", "2026-07-19").await;
+    let items = items.as_array().unwrap();
+
+    let names: Vec<&str> = items.iter().map(|i| i["name"].as_str().unwrap()).collect();
+    assert_eq!(names.len(), 3, "trois produits, trois lignes : {names:?}");
+    assert!(names.contains(&"poivron rouge"));
+    assert!(names.contains(&"poivron jaune"));
+    assert!(names.contains(&"oignon rouge"));
+
+    // Et l'ajout manuel du produit générique ouvre sa propre ligne.
+    add_item(&router, "poivron", 3.0, "piece").await;
+    let items = list_items(&router).await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 4);
+    let generic = items.iter().find(|i| i["name"] == "poivron").unwrap();
+    assert_eq!(generic["amount"], 3.0, "rien n'a été cumulé sur le rouge");
 }
 
 #[tokio::test]
