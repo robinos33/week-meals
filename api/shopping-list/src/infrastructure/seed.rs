@@ -171,6 +171,44 @@ ingredients:
         assert_eq!(references[2].avg_weight_g, None);
     }
 
+    /// Le dictionnaire versionné du dépôt, tel qu'il sera seedé.
+    fn versioned_dictionary() -> Vec<IngredientReference> {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/ingredients.yaml");
+        load_references(&path).expect("data/ingredients.yaml lisible et conforme")
+    }
+
+    #[test]
+    fn the_versioned_dictionary_only_uses_known_aisles() {
+        // Le catalogue des rayons est fermé (cf. `domain::aisle`) : un rayon
+        // inventé ici ne se rangerait dans aucun magasin, et ses articles
+        // finiraient en « Autres » sans que personne ne s'en aperçoive.
+        for entry in versioned_dictionary() {
+            assert!(
+                crate::domain::aisle::is_known(&entry.category),
+                "rayon inconnu « {} » pour « {} »",
+                entry.category,
+                entry.name
+            );
+        }
+    }
+
+    #[test]
+    fn no_dictionary_entry_swallows_another() {
+        // Chaque entrée doit se rapprocher d'elle-même : si « savon » se
+        // résolvait en « saumon », toute une famille de courses partirait au
+        // mauvais rayon — et dans le mauvais caddie.
+        let catalog = crate::domain::ReferenceCatalog::from_iter(versioned_dictionary());
+        for entry in catalog.entries() {
+            let resolved = catalog.resolve(&entry.name).expect("entrée retrouvée");
+            assert_eq!(
+                resolved.name, entry.name,
+                "« {} » est absorbé par « {} »",
+                entry.name, resolved.name
+            );
+        }
+    }
+
     #[test]
     fn rejects_a_malformed_file() {
         assert!(matches!(

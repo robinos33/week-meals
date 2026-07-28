@@ -1,10 +1,12 @@
-//! Use cases de lecture : la liste de courses courante du foyer, et le
-//! dictionnaire d'ingrédients qui sert l'auto-complétion de la saisie.
+//! Use cases de lecture : la liste de courses courante du foyer, le
+//! dictionnaire d'ingrédients qui sert l'auto-complétion de la saisie, et les
+//! magasins du foyer (ordre de visite des rayons).
 
 use kernel::HouseholdId;
 
 use crate::domain::{
-    IngredientReference, ReferenceRepository, ShoppingItem, ShoppingListRepository,
+    IngredientReference, ReferenceRepository, ShoppingItem, ShoppingListRepository, Store,
+    StoreRepository,
 };
 
 /// Query : la liste courante du foyer.
@@ -74,6 +76,43 @@ impl<'a> GetDictionaryHandler<'a> {
         match self.references.catalog().await {
             Ok(catalog) => GetDictionaryResponse::Loaded(catalog.entries().to_vec()),
             Err(_) => GetDictionaryResponse::Unavailable,
+        }
+    }
+}
+
+/// Query : les magasins d'un foyer.
+#[derive(Debug, Clone)]
+pub struct GetStoresQuery {
+    /// Foyer propriétaire (scope).
+    pub household_id: HouseholdId,
+}
+
+/// Résultat d'une lecture des magasins.
+#[derive(Debug)]
+pub enum GetStoresResponse {
+    /// Magasins du foyer, avec l'ordre de visite de leurs rayons.
+    Loaded(Vec<Store>),
+    /// Panne technique.
+    Unavailable,
+}
+
+/// Handler de la lecture des magasins.
+pub struct GetStoresHandler<'a> {
+    stores: &'a dyn StoreRepository,
+}
+
+impl<'a> GetStoresHandler<'a> {
+    /// Construit le handler.
+    #[must_use]
+    pub fn new(stores: &'a dyn StoreRepository) -> Self {
+        Self { stores }
+    }
+
+    /// Exécute la lecture. Ne renvoie jamais d'erreur.
+    pub async fn handle(&self, query: GetStoresQuery) -> GetStoresResponse {
+        match self.stores.list(query.household_id).await {
+            Ok(stores) => GetStoresResponse::Loaded(stores),
+            Err(_) => GetStoresResponse::Unavailable,
         }
     }
 }

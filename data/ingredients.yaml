@@ -14,9 +14,14 @@
 # Champs :
 #
 # - `name`            : nom canonique, celui qui s'affiche dans la liste.
-# - `category`        : rayon, pour le regroupement (`legumes`, `fruits`,
-#                       `cremerie`, `boucherie`, `poissonnerie`, `epicerie`,
-#                       `boulangerie`, `surgeles`, `boissons`, `entretien`).
+# - `category`        : **rayon**, pour le regroupement et le tri par magasin.
+#                       Le catalogue est fermé (`domain::aisle` côté serveur,
+#                       et un test le vérifie sur ce fichier) : `fruits`,
+#                       `legumes`, `boulangerie`, `boucherie`, `charcuterie`,
+#                       `poissonnerie`, `cremerie`, `surgeles`,
+#                       `epicerie-salee`, `epicerie-sucree`, `condiments`,
+#                       `boissons`, `hygiene`, `entretien`, `maison`, `bebe`,
+#                       `animaux`.
 # - `avg_weight_g`    : poids moyen d'une pièce, en grammes. **Facultatif** :
 #                       sans lui, l'ingrédient reste dans son unité d'origine
 #                       (farine, lait, huile…) — il garde tout de même son nom
@@ -33,6 +38,20 @@
 #                       qualificatifs qui ne changent pas le produit (« bio »,
 #                       « frais », « grosses », « bien mûres »…) et les fautes
 #                       de frappe proches (« échalotte » → « échalote »).
+#
+# ## Rayons : le découpage d'un magasin, pas celui d'un livre de cuisine
+#
+# Le rayon sert à **trier la liste dans l'ordre de visite** d'un magasin (cf.
+# les magasins dans les paramètres). Il suit donc les allées réelles plutôt que
+# les familles d'aliments : l'« épicerie » d'un supermarché n'est pas une allée
+# mais trois — salée, sucrée, condiments —, les herbes fraîches sont au rayon
+# légumes quand le thym séché est aux condiments, et la pâte feuilletée est au
+# frais, près de la crèmerie.
+#
+# Le dictionnaire ne contient pas que de l'alimentaire : ce qui se met dans le
+# même caddie a sa place ici (papier toilette, lessive, piles, croquettes…).
+# Ces produits n'arrivent jamais d'une recette — ils viennent de la saisie
+# manuelle — mais y figurer leur donne l'auto-complétion, l'unité et le rayon.
 #
 # ## Déclinaisons : une entrée par produit réellement différent
 #
@@ -53,7 +72,7 @@
 # Fichier versionné, source de vérité : il est rejoué en base (upsert par nom)
 # au démarrage du serveur et par `weekmeals seed-ingredients`.
 
-version: 2
+version: 3
 
 ingredients:
   # ------------------------------------------------------------------ Légumes
@@ -64,13 +83,6 @@ ingredients:
     category: legumes
     avg_weight_g: 15
     aliases: [tomates cocktail]
-  - name: tomate pelée
-    category: epicerie
-    unit: g
-    aliases: [tomates concassées, pulpe de tomate, coulis de tomate]
-  - name: concentré de tomate
-    category: epicerie
-    unit: g
   - name: courgette
     category: legumes
     avg_weight_g: 250
@@ -179,9 +191,6 @@ ingredients:
     category: legumes
     unit: g
     aliases: [petits pois]
-  - name: maïs
-    category: epicerie
-    unit: g
   - name: betterave
     category: legumes
     avg_weight_g: 200
@@ -200,7 +209,7 @@ ingredients:
     category: legumes
     unit: g
 
-  # ---------------------------------------------------------------- Aromates
+  # ------------------------------- Herbes fraîches (rayon légumes, pas épices)
   - name: persil
     category: legumes
     unit: g
@@ -216,16 +225,6 @@ ingredients:
     unit: g
   - name: menthe
     category: legumes
-    unit: g
-  - name: thym
-    category: epicerie
-    unit: g
-  - name: laurier
-    category: epicerie
-    unit: g
-    aliases: [feuille de laurier]
-  - name: romarin
-    category: epicerie
     unit: g
 
   # ------------------------------------------------------------------ Fruits
@@ -252,6 +251,11 @@ ingredients:
   - name: orange
     category: fruits
     avg_weight_g: 180
+  - name: clémentine
+    category: fruits
+    avg_weight_g: 80
+    countable: true
+    aliases: [mandarine]
   - name: fraise
     category: fruits
     unit: g
@@ -290,7 +294,102 @@ ingredients:
     avg_weight_g: 1000
     countable: true
 
-  # ---------------------------------------------------------------- Crèmerie
+  # -------------------------------------------------------------- Boulangerie
+  - name: pain
+    category: boulangerie
+    avg_weight_g: 250
+    countable: true
+    aliases: [baguette]
+  - name: pain de mie
+    category: boulangerie
+    avg_weight_g: 500
+    countable: true
+  - name: croissant
+    category: boulangerie
+    avg_weight_g: 60
+    countable: true
+    aliases: [viennoiserie, pain au chocolat]
+
+  # ---------------------------------------------------------------- Boucherie
+  - name: poulet
+    category: boucherie
+    unit: g
+    aliases: [poulet entier]
+  - name: blanc de poulet
+    category: boucherie
+    unit: g
+    aliases: [filet de poulet, escalope de poulet]
+  - name: cuisse de poulet
+    category: boucherie
+    avg_weight_g: 200
+    countable: true
+  - name: bœuf haché
+    category: boucherie
+    unit: g
+    aliases: [steak haché, viande hachée]
+  - name: bœuf
+    category: boucherie
+    unit: g
+    aliases: [bourguignon, paleron]
+  - name: porc
+    category: boucherie
+    unit: g
+    aliases: [filet mignon de porc, échine de porc]
+  - name: agneau
+    category: boucherie
+    unit: g
+    aliases: [gigot d'agneau, épaule d'agneau]
+  - name: veau
+    category: boucherie
+    unit: g
+  - name: saucisse
+    category: boucherie
+    avg_weight_g: 100
+    countable: true
+    aliases: [chipolata, merguez]
+
+  # ------------------------------------------------- Charcuterie et traiteur
+  - name: lardon
+    category: charcuterie
+    unit: g
+    aliases: [lardons fumés, poitrine fumée]
+  - name: jambon
+    category: charcuterie
+    avg_weight_g: 50
+    countable: true
+    aliases: [tranche de jambon, jambon blanc]
+  - name: saucisson
+    category: charcuterie
+    unit: g
+  - name: chorizo
+    category: charcuterie
+    unit: g
+
+  # ------------------------------------------------------------ Poissonnerie
+  - name: saumon
+    category: poissonnerie
+    unit: g
+    aliases: [pavé de saumon, filet de saumon, saumon fumé]
+  - name: cabillaud
+    category: poissonnerie
+    unit: g
+    aliases: [dos de cabillaud, morue]
+  - name: thon
+    category: poissonnerie
+    unit: g
+  - name: thon en boîte
+    category: epicerie-salee
+    unit: g
+    aliases: [miettes de thon]
+  - name: crevette
+    category: poissonnerie
+    unit: g
+    aliases: [gambas]
+  - name: moule
+    category: poissonnerie
+    unit: g
+
+  # ----------------------------------------------------------------- Crèmerie
   - name: œuf
     category: cremerie
     avg_weight_g: 55
@@ -336,230 +435,252 @@ ingredients:
   - name: ricotta
     category: cremerie
     unit: g
-
-  # -------------------------------------------------------- Viandes, poissons
-  - name: poulet
-    category: boucherie
-    unit: g
-    aliases: [poulet entier]
-  - name: blanc de poulet
-    category: boucherie
-    unit: g
-    aliases: [filet de poulet, escalope de poulet]
-  - name: cuisse de poulet
-    category: boucherie
-    avg_weight_g: 200
-    countable: true
-  - name: bœuf haché
-    category: boucherie
-    unit: g
-    aliases: [steak haché, viande hachée]
-  - name: bœuf
-    category: boucherie
-    unit: g
-    aliases: [bourguignon, paleron]
-  - name: porc
-    category: boucherie
-    unit: g
-    aliases: [filet mignon de porc, échine de porc]
-  - name: lardon
-    category: boucherie
-    unit: g
-    aliases: [lardons fumés, poitrine fumée]
-  - name: jambon
-    category: boucherie
-    avg_weight_g: 50
-    countable: true
-    aliases: [tranche de jambon, jambon blanc]
-  - name: saucisse
-    category: boucherie
-    avg_weight_g: 100
-    countable: true
-    aliases: [chipolata, merguez]
-  - name: agneau
-    category: boucherie
-    unit: g
-    aliases: [gigot d'agneau, épaule d'agneau]
-  - name: veau
-    category: boucherie
-    unit: g
-  - name: saumon
-    category: poissonnerie
-    unit: g
-    aliases: [pavé de saumon, filet de saumon, saumon fumé]
-  - name: cabillaud
-    category: poissonnerie
-    unit: g
-    aliases: [dos de cabillaud, morue]
-  - name: thon
-    category: poissonnerie
-    unit: g
-    aliases: [thon en boîte]
-  - name: crevette
-    category: poissonnerie
-    unit: g
-    aliases: [gambas]
-  - name: moule
-    category: poissonnerie
-    unit: g
-
-  # ---------------------------------------------------------------- Épicerie
-  - name: farine
-    category: epicerie
-    unit: g
-    aliases: [farine de blé, farine t55, farine t65]
-  - name: sucre
-    category: epicerie
-    unit: g
-    aliases: [sucre en poudre, sucre semoule]
-  - name: sucre vanillé
-    category: epicerie
-    unit: g
-  - name: sel
-    category: epicerie
-    unit: g
-    aliases: [sel fin, gros sel, fleur de sel]
-  - name: poivre
-    category: epicerie
-    unit: g
-    aliases: [poivre noir, poivre du moulin]
-  - name: huile d'olive
-    category: epicerie
-    unit: ml
-  - name: huile de tournesol
-    category: epicerie
-    unit: ml
-    aliases: [huile neutre, huile végétale]
-  - name: vinaigre
-    category: epicerie
-    unit: ml
-    aliases: [vinaigre balsamique, vinaigre de vin, vinaigre de cidre]
-  - name: moutarde
-    category: epicerie
-    unit: g
-    aliases: [moutarde de dijon]
-  - name: riz
-    category: epicerie
-    unit: g
-    aliases: [riz basmati, riz thaï, riz complet]
-  - name: pâtes
-    category: epicerie
-    unit: g
-    aliases: [spaghetti, penne, tagliatelle, fusilli, macaroni]
-  - name: lasagne
-    category: epicerie
-    unit: g
-    aliases: [feuilles de lasagne]
-  - name: semoule
-    category: epicerie
-    unit: g
-    aliases: [couscous]
-  - name: quinoa
-    category: epicerie
-    unit: g
-  - name: boulgour
-    category: epicerie
-    unit: g
-  - name: lentille
-    category: epicerie
-    unit: g
-    aliases: [lentilles vertes, lentilles corail]
-  - name: pois chiche
-    category: epicerie
-    unit: g
-  - name: haricot rouge
-    category: epicerie
-    unit: g
-  - name: bouillon
-    category: epicerie
-    unit: ml
-    aliases: [bouillon de volaille, bouillon de légumes, cube de bouillon, fond de veau]
-  - name: lait de coco
-    category: epicerie
-    unit: ml
-  - name: levure
-    category: epicerie
-    unit: g
-    aliases: [levure chimique, levure de boulanger]
-  - name: chocolat noir
-    category: epicerie
-    unit: g
-    aliases: [chocolat pâtissier]
-  - name: miel
-    category: epicerie
-    unit: g
-  - name: confiture
-    category: epicerie
-    unit: g
-  - name: olive
-    category: epicerie
-    unit: g
-  - name: cornichon
-    category: epicerie
-    unit: g
-  - name: amande
-    category: epicerie
-    unit: g
-    aliases: [poudre d'amande, amandes effilées]
-  - name: noix
-    category: epicerie
-    unit: g
-    aliases: [cerneaux de noix]
-  - name: pignon de pin
-    category: epicerie
-    unit: g
-  - name: raisin sec
-    category: epicerie
-    unit: g
-  - name: curry
-    category: epicerie
-    unit: g
-  - name: paprika
-    category: epicerie
-    unit: g
-  - name: cumin
-    category: epicerie
-    unit: g
-  - name: curcuma
-    category: epicerie
-    unit: g
-  - name: cannelle
-    category: epicerie
-    unit: g
-  - name: herbes de Provence
-    category: epicerie
-    unit: g
-  - name: piment
-    category: epicerie
-    unit: g
-    aliases: [piment d'espelette, piment de cayenne]
-  - name: sauce soja
-    category: epicerie
-    unit: ml
+  # Les pâtes à dérouler sont au rayon frais, pas en épicerie.
   - name: pâte feuilletée
-    category: epicerie
+    category: cremerie
     avg_weight_g: 230
     countable: true
   - name: pâte brisée
-    category: epicerie
+    category: cremerie
     avg_weight_g: 230
     countable: true
 
-  # -------------------------------------------------------------- Boulangerie
-  - name: pain
-    category: boulangerie
-    avg_weight_g: 250
+  # ----------------------------------------------------------------- Surgelés
+  - name: légumes surgelés
+    category: surgeles
+    unit: g
+    aliases: [poêlée de légumes]
+  - name: épinards surgelés
+    category: surgeles
+    unit: g
+  - name: frites
+    category: surgeles
+    unit: g
+  - name: poisson pané
+    category: surgeles
+    avg_weight_g: 100
     countable: true
-    aliases: [baguette]
-  - name: pain de mie
-    category: boulangerie
-    avg_weight_g: 500
+  - name: pizza surgelée
+    category: surgeles
+    avg_weight_g: 400
     countable: true
-  - name: chapelure
-    category: boulangerie
+  - name: glace
+    category: surgeles
+    unit: ml
+    aliases: [crème glacée, sorbet]
+  - name: glaçons
+    category: surgeles
     unit: g
 
+  # ----------------------------------------------------------- Épicerie salée
+  - name: riz
+    category: epicerie-salee
+    unit: g
+    aliases: [riz basmati, riz thaï, riz complet]
+  - name: pâtes
+    category: epicerie-salee
+    unit: g
+    aliases: [spaghetti, penne, tagliatelle, fusilli, macaroni]
+  - name: lasagne
+    category: epicerie-salee
+    unit: g
+    aliases: [feuilles de lasagne]
+  - name: semoule
+    category: epicerie-salee
+    unit: g
+    aliases: [couscous]
+  - name: quinoa
+    category: epicerie-salee
+    unit: g
+  - name: boulgour
+    category: epicerie-salee
+    unit: g
+  - name: lentille
+    category: epicerie-salee
+    unit: g
+    aliases: [lentilles vertes, lentilles corail]
+  - name: pois chiche
+    category: epicerie-salee
+    unit: g
+  - name: haricot rouge
+    category: epicerie-salee
+    unit: g
+  - name: maïs
+    category: epicerie-salee
+    unit: g
+  - name: tomate pelée
+    category: epicerie-salee
+    unit: g
+    aliases: [tomates concassées, pulpe de tomate, coulis de tomate]
+  - name: concentré de tomate
+    category: epicerie-salee
+    unit: g
+  - name: bouillon
+    category: epicerie-salee
+    unit: ml
+    aliases: [bouillon de volaille, bouillon de légumes, cube de bouillon, fond de veau]
+  - name: lait de coco
+    category: epicerie-salee
+    unit: ml
+  - name: chapelure
+    category: epicerie-salee
+    unit: g
+  - name: pignon de pin
+    category: epicerie-salee
+    unit: g
+  - name: chips
+    category: epicerie-salee
+    unit: g
+  - name: soupe
+    category: epicerie-salee
+    unit: ml
+    aliases: [velouté]
+
+  # ---------------------------------------------------------- Épicerie sucrée
+  - name: farine
+    category: epicerie-sucree
+    unit: g
+    aliases: [farine de blé, farine t55, farine t65]
+  - name: sucre
+    category: epicerie-sucree
+    unit: g
+    aliases: [sucre en poudre, sucre semoule]
+  - name: sucre vanillé
+    category: epicerie-sucree
+    unit: g
+  - name: levure
+    category: epicerie-sucree
+    unit: g
+    aliases: [levure chimique, levure de boulanger]
+  - name: chocolat noir
+    category: epicerie-sucree
+    unit: g
+    aliases: [chocolat pâtissier]
+  - name: miel
+    category: epicerie-sucree
+    unit: g
+  - name: confiture
+    category: epicerie-sucree
+    unit: g
+  - name: pâte à tartiner
+    category: epicerie-sucree
+    unit: g
+  - name: amande
+    category: epicerie-sucree
+    unit: g
+    aliases: [poudre d'amande, amandes effilées]
+  - name: noix
+    category: epicerie-sucree
+    unit: g
+    aliases: [cerneaux de noix]
+  - name: raisin sec
+    category: epicerie-sucree
+    unit: g
+  - name: abricot sec
+    category: epicerie-sucree
+    unit: g
+  - name: céréales
+    category: epicerie-sucree
+    unit: g
+    aliases: [muesli, flocons d'avoine]
+  - name: biscuit
+    category: epicerie-sucree
+    unit: g
+    aliases: [gâteau sec, sablé]
+  - name: compote
+    category: epicerie-sucree
+    unit: g
+  - name: café
+    category: epicerie-sucree
+    unit: g
+  - name: café moulu
+    category: epicerie-sucree
+    unit: g
+  - name: thé
+    category: epicerie-sucree
+    unit: g
+    aliases: [infusion, tisane]
+
+  # ------------------------------------------------------- Condiments, épices
+  - name: sel
+    category: condiments
+    unit: g
+    aliases: [sel fin, gros sel, fleur de sel]
+  - name: poivre
+    category: condiments
+    unit: g
+    aliases: [poivre noir, poivre du moulin]
+  - name: huile d'olive
+    category: condiments
+    unit: ml
+  - name: huile de tournesol
+    category: condiments
+    unit: ml
+    aliases: [huile neutre, huile végétale]
+  - name: vinaigre
+    category: condiments
+    unit: ml
+    aliases: [vinaigre balsamique, vinaigre de vin, vinaigre de cidre]
+  - name: moutarde
+    category: condiments
+    unit: g
+    aliases: [moutarde de dijon]
+  - name: mayonnaise
+    category: condiments
+    unit: g
+  - name: ketchup
+    category: condiments
+    unit: g
+  - name: sauce soja
+    category: condiments
+    unit: ml
+  - name: olive
+    category: condiments
+    unit: g
+  - name: cornichon
+    category: condiments
+    unit: g
+  - name: curry
+    category: condiments
+    unit: g
+  - name: paprika
+    category: condiments
+    unit: g
+  - name: cumin
+    category: condiments
+    unit: g
+  - name: curcuma
+    category: condiments
+    unit: g
+  - name: cannelle
+    category: condiments
+    unit: g
+  - name: herbes de Provence
+    category: condiments
+    unit: g
+  - name: thym
+    category: condiments
+    unit: g
+  - name: laurier
+    category: condiments
+    unit: g
+    aliases: [feuille de laurier]
+  - name: romarin
+    category: condiments
+    unit: g
+  - name: piment
+    category: condiments
+    unit: g
+    aliases: [piment d'espelette, piment de cayenne]
+
   # ----------------------------------------------------------------- Boissons
+  - name: eau
+    category: boissons
+    unit: l
+    aliases: [eau plate, bouteille d'eau]
+  - name: eau pétillante
+    category: boissons
+    unit: l
   - name: vin blanc
     category: boissons
     unit: ml
@@ -572,6 +693,187 @@ ingredients:
   - name: jus d'orange
     category: boissons
     unit: ml
-  - name: eau pétillante
+  - name: jus de pomme
     category: boissons
     unit: ml
+  - name: soda
+    category: boissons
+    unit: ml
+    aliases: [cola, limonade]
+  - name: sirop
+    category: boissons
+    unit: ml
+
+  # -------------------------------------------------------- Hygiène et beauté
+  - name: dentifrice
+    category: hygiene
+    avg_weight_g: 75
+    countable: true
+  - name: brosse à dents
+    category: hygiene
+    avg_weight_g: 20
+    countable: true
+  - name: savon
+    category: hygiene
+    avg_weight_g: 100
+    countable: true
+  - name: gel douche
+    category: hygiene
+    unit: ml
+  - name: shampoing
+    category: hygiene
+    unit: ml
+    aliases: [shampooing]
+  - name: après-shampoing
+    category: hygiene
+    unit: ml
+    aliases: [après-shampooing, démêlant]
+  - name: déodorant
+    category: hygiene
+    avg_weight_g: 50
+    countable: true
+  - name: rasoir
+    category: hygiene
+    avg_weight_g: 20
+    countable: true
+    aliases: [lames de rasoir]
+  - name: mousse à raser
+    category: hygiene
+    unit: ml
+  - name: crème hydratante
+    category: hygiene
+    unit: ml
+  - name: mouchoirs
+    category: hygiene
+    avg_weight_g: 50
+    countable: true
+    aliases: [paquet de mouchoirs]
+  - name: coton-tige
+    category: hygiene
+    avg_weight_g: 50
+    countable: true
+  - name: protection hygiénique
+    category: hygiene
+    avg_weight_g: 100
+    countable: true
+    aliases: [serviettes hygiéniques, tampons]
+
+  # ------------------------------------------------------- Entretien, ménage
+  - name: liquide vaisselle
+    category: entretien
+    unit: ml
+  - name: tablettes lave-vaisselle
+    category: entretien
+    avg_weight_g: 500
+    countable: true
+    aliases: [pastilles lave-vaisselle]
+  - name: lessive
+    category: entretien
+    unit: ml
+  - name: adoucissant
+    category: entretien
+    unit: ml
+  - name: éponge
+    category: entretien
+    avg_weight_g: 20
+    countable: true
+    aliases: [éponges grattantes]
+  - name: sac poubelle
+    category: entretien
+    avg_weight_g: 200
+    countable: true
+    aliases: [sacs poubelle]
+  - name: papier toilette
+    category: entretien
+    avg_weight_g: 500
+    countable: true
+  - name: essuie-tout
+    category: entretien
+    avg_weight_g: 300
+    countable: true
+    aliases: [sopalin, papier essuie-tout]
+  - name: nettoyant multi-usage
+    category: entretien
+    unit: ml
+    aliases: [spray nettoyant]
+  - name: nettoyant vitres
+    category: entretien
+    unit: ml
+  - name: javel
+    category: entretien
+    unit: ml
+    aliases: [eau de javel]
+
+  # --------------------------------------------------------- Maison et bazar
+  - name: papier aluminium
+    category: maison
+    avg_weight_g: 100
+    countable: true
+    aliases: [alu]
+  - name: film alimentaire
+    category: maison
+    avg_weight_g: 100
+    countable: true
+  - name: papier cuisson
+    category: maison
+    avg_weight_g: 100
+    countable: true
+    aliases: [papier sulfurisé]
+  - name: sac congélation
+    category: maison
+    avg_weight_g: 100
+    countable: true
+  - name: pile
+    category: maison
+    avg_weight_g: 25
+    countable: true
+    aliases: [piles]
+  - name: ampoule
+    category: maison
+    avg_weight_g: 50
+    countable: true
+  - name: allumettes
+    category: maison
+    avg_weight_g: 20
+    countable: true
+  - name: bougie
+    category: maison
+    avg_weight_g: 100
+    countable: true
+  - name: torchon
+    category: maison
+    avg_weight_g: 100
+    countable: true
+
+  # ------------------------------------------------------------------- Bébé
+  - name: couches
+    category: bebe
+    avg_weight_g: 1000
+    countable: true
+  - name: lingettes
+    category: bebe
+    avg_weight_g: 300
+    countable: true
+  - name: lait infantile
+    category: bebe
+    avg_weight_g: 800
+    countable: true
+  - name: petit pot
+    category: bebe
+    avg_weight_g: 130
+    countable: true
+
+  # --------------------------------------------------------------- Animaux
+  - name: croquettes pour chien
+    category: animaux
+    unit: kg
+  - name: croquettes pour chat
+    category: animaux
+    unit: kg
+  - name: pâtée pour chat
+    category: animaux
+    avg_weight_g: 100
+    countable: true
+  - name: litière pour chat
+    category: animaux
+    unit: kg

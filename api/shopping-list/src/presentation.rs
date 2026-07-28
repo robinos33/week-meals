@@ -29,7 +29,7 @@ use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::NaiveDate;
-use kernel::{ShoppingItemId, Unit};
+use kernel::{ShoppingItemId, StoreId, Unit};
 use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
@@ -39,16 +39,20 @@ use crate::infrastructure::ShoppingListNotifier;
 
 use crate::application::commands::{
     AddItemCommand, AddItemHandler, AddItemResponse, ClearCheckedCommand, ClearCheckedHandler,
-    ClearCheckedResponse, DeleteItemCommand, DeleteItemHandler, DeleteItemResponse,
-    GenerateListCommand, GenerateListHandler, GenerateListResponse, ReorderCommand, ReorderHandler,
-    ReorderResponse, UpdateItemCommand, UpdateItemHandler, UpdateItemResponse,
+    ClearCheckedResponse, CreateStoreCommand, CreateStoreHandler, CreateStoreResponse,
+    DeleteItemCommand, DeleteItemHandler, DeleteItemResponse, DeleteStoreCommand,
+    DeleteStoreHandler, DeleteStoreResponse, GenerateListCommand, GenerateListHandler,
+    GenerateListResponse, ReorderCommand, ReorderHandler, ReorderResponse, UpdateItemCommand,
+    UpdateItemHandler, UpdateItemResponse, UpdateStoreCommand, UpdateStoreHandler,
+    UpdateStoreResponse,
 };
 use crate::application::queries::{
     GetDictionaryHandler, GetDictionaryResponse, GetListHandler, GetListQuery, GetListResponse,
+    GetStoresHandler, GetStoresQuery, GetStoresResponse,
 };
 use crate::domain::{
-    CookedCountRecorder, IngredientReference, PlannedIngredientsSource, ReferenceRepository,
-    ShoppingItem, ShoppingListRepository,
+    aisle, CookedCountRecorder, IngredientReference, PlannedIngredientsSource, ReferenceRepository,
+    ShoppingItem, ShoppingListRepository, Store, StoreRepository,
 };
 
 /// État injecté dans les routes de la liste de courses.
@@ -62,6 +66,8 @@ pub struct ShoppingListState {
     pub planned: Arc<dyn PlannedIngredientsSource>,
     /// Compteur « cuisiné X fois » (#58), incrémenté à la génération.
     pub cooked: Arc<dyn CookedCountRecorder>,
+    /// Magasins du foyer : l'ordre de visite de leurs rayons trie la liste.
+    pub stores: Arc<dyn StoreRepository>,
     /// Bus temps réel : signale aux flux SSE qu'une écriture a modifié la liste.
     pub notifier: ShoppingListNotifier,
 }
@@ -80,6 +86,12 @@ pub fn router(state: ShoppingListState) -> Router {
             axum::routing::patch(update).delete(remove),
         )
         .route("/shopping-list/checked", delete(clear_checked))
+        .route("/aisles", get(aisles))
+        .route("/stores", get(list_stores).post(create_store))
+        .route(
+            "/stores/{id}",
+            axum::routing::patch(update_store).delete(delete_store),
+        )
         .with_state(state)
 }
 
@@ -390,5 +402,146 @@ async fn clear_checked(
             StatusCode::NO_CONTENT.into_response()
         }
         ClearCheckedResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+// --- Rayons et magasins ---------------------------------------------------
+
+/// Un rayon du catalogue, exposé au front (qui n'a donc ni liste ni libellés à
+/// dupliquer : le vocabulaire de classement a une seule source, le domaine).
+#[derive(Debug, Serialize)]
+struct AisleView {
+    slug: &'static str,
+    label: &'static str,
+}
+
+/// Un magasin exposé en réponse.
+#[derive(Debug, Serialize)]
+struct StoreView {
+    id: Uuid,
+    name: String,
+    /// Slugs des rayons, dans l'ordre de visite.
+    aisles: Vec<String>,
+}
+
+impl From<Store> for StoreView {
+    fn from(store: Store) -> Self {
+        Self {
+            id: store.id.as_uuid(),
+            name: store.name,
+            aisles: store.aisles,
+        }
+    }
+}
+
+/// Corps de création d'un magasin.
+#[derive(Debug, Deserialize)]
+struct CreateStoreBody {
+    name: String,
+}
+
+/// Corps d'édition d'un magasin : tout est optionnel (champs absents =
+/// inchangés).
+#[derive(Debug, Deserialize)]
+struct UpdateStoreBody {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    aisles: Option<Vec<String>>,
+}
+
+/// `GET /aisles` — catalogue des rayons, dans l'ordre par défaut.
+///
+/// Constante applicative (aucun accès base) : c'est le vocabulaire que partagent
+/// le dictionnaire d'ingrédients et l'ordre de visite des magasins.
+async fn aisles(_user: AuthUser) -> impl IntoResponse {
+    let views: Vec<AisleView> = aisle::AISLES
+        .iter()
+        .map(|aisle| AisleView {
+            slug: aisle.slug,
+            label: aisle.label,
+        })
+        .collect();
+    (StatusCode::OK, Json(views))
+}
+
+/// `GET /stores` — magasins du foyer.
+async fn list_stores(user: AuthUser, State(state): State<ShoppingListState>) -> impl IntoResponse {
+    let response = GetStoresHandler::new(state.stores.as_ref())
+        .handle(GetStoresQuery {
+            household_id: user.household_id(),
+        })
+        .await;
+    match response {
+        GetStoresResponse::Loaded(stores) => {
+            let views: Vec<StoreView> = stores.into_iter().map(StoreView::from).collect();
+            (StatusCode::OK, Json(views)).into_response()
+        }
+        GetStoresResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `POST /stores` — crée un magasin (ordre de rayons par défaut).
+async fn create_store(
+    user: AuthUser,
+    State(state): State<ShoppingListState>,
+    Json(body): Json<CreateStoreBody>,
+) -> impl IntoResponse {
+    let response = CreateStoreHandler::new(state.stores.as_ref())
+        .handle(CreateStoreCommand {
+            household_id: user.household_id(),
+            name: body.name,
+        })
+        .await;
+    match response {
+        CreateStoreResponse::Created(store) => {
+            (StatusCode::CREATED, Json(StoreView::from(store))).into_response()
+        }
+        CreateStoreResponse::Invalid(message) => invalid(message),
+        CreateStoreResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `PATCH /stores/:id` — renomme un magasin et/ou réordonne ses rayons.
+async fn update_store(
+    user: AuthUser,
+    State(state): State<ShoppingListState>,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpdateStoreBody>,
+) -> impl IntoResponse {
+    let response = UpdateStoreHandler::new(state.stores.as_ref())
+        .handle(UpdateStoreCommand {
+            household_id: user.household_id(),
+            id: StoreId::from(id),
+            name: body.name,
+            aisles: body.aisles,
+        })
+        .await;
+    match response {
+        UpdateStoreResponse::Updated(store) => {
+            (StatusCode::OK, Json(StoreView::from(store))).into_response()
+        }
+        UpdateStoreResponse::NotFound => StatusCode::NOT_FOUND.into_response(),
+        UpdateStoreResponse::Invalid(message) => invalid(message),
+        UpdateStoreResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+/// `DELETE /stores/:id` — supprime un magasin (son parcours part avec lui).
+async fn delete_store(
+    user: AuthUser,
+    State(state): State<ShoppingListState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let response = DeleteStoreHandler::new(state.stores.as_ref())
+        .handle(DeleteStoreCommand {
+            household_id: user.household_id(),
+            id: StoreId::from(id),
+        })
+        .await;
+    match response {
+        DeleteStoreResponse::Deleted => StatusCode::NO_CONTENT.into_response(),
+        DeleteStoreResponse::NotFound => StatusCode::NOT_FOUND.into_response(),
+        DeleteStoreResponse::Unavailable => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }

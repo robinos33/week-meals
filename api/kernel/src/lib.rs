@@ -12,7 +12,9 @@ mod ids;
 mod quantity;
 mod repository;
 
-pub use ids::{DeviceId, HouseholdId, RecipeId, ShoppingItemId, UserId, DEMO_HOUSEHOLD_ID};
+pub use ids::{
+    DeviceId, HouseholdId, RecipeId, ShoppingItemId, StoreId, UserId, DEMO_HOUSEHOLD_ID,
+};
 pub use quantity::{Dimension, Quantity, QuantityError, Unit};
 pub use repository::RepositoryError;
 

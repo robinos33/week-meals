@@ -1,12 +1,10 @@
 import {
-  useEffect,
   useId,
   useMemo,
   useRef,
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import {
@@ -28,6 +26,9 @@ import {
   type SyncState,
   type Unit,
 } from "../api/shopping-list";
+import { useAisles, useStores, type Store } from "../api/stores";
+import { aisleEmoji, groupByAisle } from "../lib/aisles";
+import { useDragOrder } from "../lib/drag-order";
 import { foodEmoji } from "../lib/food-emoji";
 import { canonicalKey, rankMatches } from "../lib/ingredient-match";
 import { parseAmount } from "../lib/quantity";
@@ -40,9 +41,21 @@ const SYNC_LABELS: Record<SyncState, string> = {
   live: "Synchronisé en direct",
 };
 
+/** Mémoire du magasin choisi (par appareil : on ne fait pas tous les mêmes). */
+const STORE_STORAGE_KEY = "week-meals:shopping-store";
+
+/** Valeur du sélecteur pour « pas de tri » : l'ordre manuel de la liste. */
+const MANUAL_ORDER = "";
+
 /**
  * Onglet Courses (UX inspirée de Google Keep) : ajout rapide en haut, articles
  * cochables, les cochés glissant dans une section repliable en bas.
+ *
+ * Deux façons de lire la liste, au choix : l'**ordre manuel** (réordonnable au
+ * doigt, le défaut historique) ou le **tri par magasin**, qui la découpe en
+ * rayons dans l'ordre de visite paramétré dans les réglages. Le choix est
+ * gardé sur l'appareil : dans un foyer, chacun ne fait pas ses courses au même
+ * endroit.
  */
 export function ShoppingScreen() {
   const query = useShoppingList();
@@ -50,11 +63,24 @@ export function ShoppingScreen() {
   const addItem = useAddItem();
   const updateItem = useUpdateItem();
   const clearChecked = useClearChecked();
+  const stores = useStores();
   const [showChecked, setShowChecked] = useState(true);
+  const [storeId, setStoreId] = useState(
+    () => localStorage.getItem(STORE_STORAGE_KEY) ?? MANUAL_ORDER,
+  );
 
   const items = useMemo(() => query.data ?? [], [query.data]);
   const pending = items.filter((item) => !item.checked);
   const done = items.filter((item) => item.checked);
+
+  // Un magasin supprimé (ou choisi sur un autre appareil) ne doit pas figer la
+  // liste sur un tri fantôme : on retombe alors sur l'ordre manuel.
+  const store = stores.data?.find((candidate) => candidate.id === storeId);
+
+  function chooseStore(id: string) {
+    setStoreId(id);
+    localStorage.setItem(STORE_STORAGE_KEY, id);
+  }
 
   return (
     <section>
@@ -81,6 +107,24 @@ export function ShoppingScreen() {
         )}
       </header>
 
+      {(stores.data?.length ?? 0) > 0 && (
+        <label className="store-picker">
+          <span className="store-picker__label">Trier par magasin</span>
+          <select
+            className="input"
+            value={store ? store.id : MANUAL_ORDER}
+            onChange={(event) => chooseStore(event.target.value)}
+          >
+            <option value={MANUAL_ORDER}>Ordre manuel</option>
+            {stores.data?.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <QuickAdd
         items={items}
         onAdd={(item) => addItem.mutate(item)}
@@ -106,7 +150,11 @@ export function ShoppingScreen() {
         </div>
       ) : (
         <>
-          <PendingList items={pending} tailIds={done.map((item) => item.id)} />
+          {store ? (
+            <AisleSections items={pending} store={store} />
+          ) : (
+            <PendingList items={pending} tailIds={done.map((item) => item.id)} />
+          )}
 
           {done.length > 0 && (
             <div className="checked-section">
@@ -135,74 +183,16 @@ export function ShoppingScreen() {
 }
 
 /**
- * Liste des articles à cocher, réordonnable par glisser-déposer via la poignée.
- *
- * Le drag est géré aux Pointer Events (tactile + souris, sans dépendance) :
- * l'ordre local suit le doigt en échangeant avec la ligne voisine dès que son
- * milieu est franchi, et n'est persisté qu'au relâchement. `tailIds` (les
- * lignes cochées) est réémis à la suite pour garder un ordre global cohérent.
+ * Liste des articles à cocher, réordonnable par glisser-déposer via la poignée
+ * (cf. [`useDragOrder`]). L'ordre n'est persisté qu'au relâchement ; `tailIds`
+ * (les lignes cochées) est réémis à la suite pour garder un ordre global
+ * cohérent.
  */
 function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: string[] }) {
   const reorder = useReorderItems();
-  const [order, setOrder] = useState(items);
-  // Ordre courant en ref : lu de façon synchrone pendant le glissement (l'état
-  // React n'est pas encore à jour au moment du `pointerup`).
-  const orderRef = useRef(items);
-  const listRef = useRef<HTMLUListElement>(null);
-  const draggingId = useRef<string | null>(null);
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  // Resynchronise sur le serveur, sauf pendant un glissement en cours.
-  useEffect(() => {
-    if (!draggingId.current) {
-      orderRef.current = items;
-      setOrder(items);
-    }
-  }, [items]);
-
-  /** Place la ligne glissée au slot correspondant à l'ordonnée `y` du doigt. */
-  function reposition(y: number) {
-    const id = draggingId.current;
-    if (!id) return;
-    const current = orderRef.current;
-    const from = current.findIndex((item) => item.id === id);
-    const rows = Array.from(listRef.current?.children ?? []) as HTMLElement[];
-
-    // Slot cible = première ligne dont le milieu passe sous le doigt.
-    let target = rows.findIndex((row) => {
-      const rect = row.getBoundingClientRect();
-      return y < rect.top + rect.height / 2;
-    });
-    if (target === -1) target = rows.length - 1;
-    else if (target > from) target -= 1; // on retire d'abord la ligne glissée
-
-    if (target !== from && target >= 0) {
-      const next = [...current];
-      const [moved] = next.splice(from, 1);
-      next.splice(target, 0, moved);
-      orderRef.current = next;
-      setOrder(next);
-    }
-  }
-
-  function onPointerDown(event: ReactPointerEvent, id: string) {
-    event.preventDefault();
-    draggingId.current = id;
-    setActiveId(id);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function onPointerMove(event: ReactPointerEvent) {
-    reposition(event.clientY);
-  }
-
-  function onPointerUp(event: ReactPointerEvent) {
-    if (!draggingId.current) return;
-    reposition(event.clientY); // capte la position de relâchement
-    draggingId.current = null;
-    setActiveId(null);
-    reorder.mutate([...orderRef.current.map((item) => item.id), ...tailIds]);
-  }
+  const { order, activeId, listRef, handleProps } = useDragOrder(items, (ordered) =>
+    reorder.mutate([...ordered.map((item) => item.id), ...tailIds]),
+  );
 
   return (
     <ul className="shopping-list" ref={listRef}>
@@ -216,10 +206,7 @@ function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: strin
               className="shopping-row__handle"
               type="button"
               aria-label={`Déplacer ${item.name}`}
-              onPointerDown={(event) => onPointerDown(event, item.id)}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onPointerCancel={onPointerUp}
+              {...handleProps(item.id)}
             >
               ≡
             </button>
@@ -227,6 +214,42 @@ function PendingList({ items, tailIds }: { items: ShoppingItem[]; tailIds: strin
         />
       ))}
     </ul>
+  );
+}
+
+/**
+ * La liste découpée en **rayons**, dans l'ordre de visite du magasin choisi.
+ *
+ * Pas de glisser-déposer ici : c'est le magasin qui donne l'ordre, et le
+ * régler article par article le contredirait. Un article dont le rayon est
+ * inconnu du magasin — ou qui n'en a pas — n'est jamais perdu : il termine
+ * dans la section « Autres » (cf. `lib/aisles`).
+ */
+function AisleSections({ items, store }: { items: ShoppingItem[]; store: Store }) {
+  const aisles = useAisles();
+
+  const groups = useMemo(() => {
+    const labels = Object.fromEntries(
+      (aisles.data ?? []).map((aisle) => [aisle.slug, aisle.label]),
+    );
+    return groupByAisle(items, store.aisles, labels);
+  }, [items, store.aisles, aisles.data]);
+
+  return (
+    <div className="aisle-sections">
+      {groups.map((group) => (
+        <section className="aisle-section" key={group.slug ?? "autres"}>
+          <h2 className="aisle-section__title">
+            <span aria-hidden="true">{aisleEmoji(group.slug)}</span> {group.label}
+          </h2>
+          <ul className="shopping-list">
+            {group.items.map((item) => (
+              <ShoppingRow key={item.id} item={item} />
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -280,20 +303,6 @@ function QuantityStepper({
     </div>
   );
 }
-
-/** Libellé lisible d'un rayon du dictionnaire. */
-const CATEGORY_LABELS: Record<string, string> = {
-  legumes: "Légumes",
-  fruits: "Fruits",
-  cremerie: "Crèmerie",
-  boucherie: "Boucherie",
-  poissonnerie: "Poissonnerie",
-  epicerie: "Épicerie",
-  boulangerie: "Boulangerie",
-  surgeles: "Surgelés",
-  boissons: "Boissons",
-  entretien: "Entretien",
-};
 
 /** Nombre de suggestions affichées : au-delà, la liste masque l'écran. */
 const MAX_SUGGESTIONS = 6;
@@ -377,6 +386,9 @@ function IngredientInput({
   autoFocus?: boolean;
 }) {
   const candidates = useSuggestionCandidates(excludeId);
+  // Libellés de rayon servis par l'API : le vocabulaire de classement n'a
+  // qu'une source, le serveur (cf. `api/stores`).
+  const aisles = useAisles();
   const inputRef = useRef<HTMLInputElement>(null);
   // Identifiants ARIA propres à l'instance : deux combobox peuvent coexister
   // (ajout rapide + ligne en édition).
@@ -481,7 +493,8 @@ function IngredientInput({
                     ? `déjà ${formatQuantity(suggestion.existing)}${
                         suggestion.existing.checked ? " (coché)" : " — sera cumulé"
                       }`
-                    : (CATEGORY_LABELS[suggestion.category ?? ""] ?? "")}
+                    : (aisles.data?.find((aisle) => aisle.slug === suggestion.category)
+                        ?.label ?? "")}
                 </span>
               </button>
             </li>

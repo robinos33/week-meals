@@ -151,6 +151,35 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["jus", "🧃"],
   ["soda", "🥤"],
   ["eau", "💧"],
+
+  // Hors alimentaire : le caddie ne contient pas que des aliments, et une
+  // ligne « papier toilette » mérite son repère comme les autres.
+  ["papier toilette", "🧻"],
+  ["essuie tout", "🧻"],
+  ["mouchoir", "🤧"],
+  ["lessive", "🧴"],
+  ["adoucissant", "🧴"],
+  ["liquide vaisselle", "🧴"],
+  ["gel douche", "🧴"],
+  ["shampoing", "🧴"],
+  ["shampooing", "🧴"],
+  ["savon", "🧼"],
+  ["nettoyant", "🧼"],
+  ["javel", "🧼"],
+  ["eponge", "🧽"],
+  ["poubelle", "🗑️"],
+  ["dentifrice", "🪥"],
+  ["brosse a dents", "🪥"],
+  ["rasoir", "🪒"],
+  ["couche", "🧷"],
+  ["lingette", "🧻"],
+  ["pile", "🔋"],
+  ["ampoule", "💡"],
+  ["bougie", "🕯️"],
+  ["allumette", "🔥"],
+  ["torchon", "🧺"],
+  ["croquette", "🐾"],
+  ["litiere", "🐾"],
 ];
 
 /** Règles pré-découpées en mots normalisés (calculé une fois au chargement). */

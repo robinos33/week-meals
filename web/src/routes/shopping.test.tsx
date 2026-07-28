@@ -37,8 +37,14 @@ const ITEMS: ShoppingItem[] = [
 const DICTIONARY: DictionaryEntry[] = [
   { name: "courgette", category: "legumes", unit: "piece", countable: false, aliases: [] },
   { name: "œuf", category: "cremerie", unit: "piece", countable: true, aliases: ["oeuf"] },
-  { name: "farine", category: "epicerie", unit: "g", countable: false, aliases: ["farine de blé"] },
-  { name: "lait de coco", category: "epicerie", unit: "ml", countable: false, aliases: [] },
+  {
+    name: "farine",
+    category: "epicerie-sucree",
+    unit: "g",
+    countable: false,
+    aliases: ["farine de blé"],
+  },
+  { name: "lait de coco", category: "epicerie-salee", unit: "ml", countable: false, aliases: [] },
 ];
 
 function json(body: unknown): Response {
@@ -48,13 +54,29 @@ function json(body: unknown): Response {
   });
 }
 
+/** Catalogue des rayons, tel que servi par l'API. */
+const AISLES = [
+  { slug: "legumes", label: "Légumes" },
+  { slug: "cremerie", label: "Crèmerie" },
+];
+
+/** Un magasin où la crèmerie se traverse avant les légumes. */
+const STORES = [{ id: "s1", name: "Lidl", aisles: ["cremerie", "legumes"] }];
+
+/** Les magasins sont servis à la demande : sans eux, pas de sélecteur. */
+let stores: unknown = [];
+
 beforeEach(() => {
+  stores = [];
+  localStorage.clear();
   vi.stubGlobal(
     "fetch",
     vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/shopping-list/dictionary")) return Promise.resolve(json(DICTIONARY));
       if (url.endsWith("/shopping-list")) return Promise.resolve(json(ITEMS));
+      if (url.endsWith("/aisles")) return Promise.resolve(json(AISLES));
+      if (url.endsWith("/stores")) return Promise.resolve(json(stores));
       return Promise.resolve(json(null));
     }),
   );
@@ -209,5 +231,39 @@ describe("auto-complétion de l'édition d'une ligne", () => {
     const labels = suggestions().map((option) => option.textContent ?? "");
     expect(labels.some((label) => /lait de coco/.test(label))).toBe(true);
     expect(labels.some((label) => /déjà/.test(label))).toBe(false);
+  });
+});
+
+describe("tri par magasin", () => {
+  it("ne propose pas de tri tant qu'aucun magasin n'est paramétré", async () => {
+    renderScreen();
+    await screen.findByText("courgette");
+    expect(screen.queryByLabelText("Trier par magasin")).toBeNull();
+  });
+
+  it("découpe la liste en rayons, dans l'ordre de visite du magasin", async () => {
+    stores = STORES;
+    const user = userEvent.setup();
+    renderScreen();
+
+    const picker = await screen.findByLabelText("Trier par magasin");
+    await user.selectOptions(picker, "s1");
+
+    // Chez ce magasin, la crèmerie passe avant les légumes — l'inverse de
+    // l'ordre de la liste.
+    const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(titles).toEqual(["🧀 Crèmerie", "🥕 Légumes"]);
+  });
+
+  it("garde le magasin choisi d'une visite à l'autre", async () => {
+    stores = STORES;
+    const user = userEvent.setup();
+    const view = renderScreen();
+
+    await user.selectOptions(await screen.findByLabelText("Trier par magasin"), "s1");
+    view.unmount();
+
+    renderScreen();
+    expect(await screen.findByLabelText("Trier par magasin")).toHaveValue("s1");
   });
 });
