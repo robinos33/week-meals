@@ -1,14 +1,18 @@
 //! Use cases d'écriture de la liste de courses : génération depuis le
-//! calendrier, ajout manuel, édition, suppression, vidage des cochés.
+//! calendrier, ajout manuel, édition, suppression, vidage des cochés — et
+//! gestion des **magasins** du foyer (création, renommage, ordre des rayons,
+//! suppression).
 
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
-use kernel::{HouseholdId, Quantity, QuantityError, RepositoryError, ShoppingItemId, Unit};
+use kernel::{
+    HouseholdId, Quantity, QuantityError, RepositoryError, ShoppingItemId, StoreId, Unit,
+};
 
 use crate::domain::{
     aggregate_purchases, CookedCountRecorder, PlannedIngredientsSource, ReferenceRepository,
-    ShoppingItem, ShoppingListRepository,
+    ShoppingItem, ShoppingListRepository, Store, StoreError, StoreRepository,
 };
 
 // --- Génération -----------------------------------------------------------
@@ -474,6 +478,175 @@ impl<'a> ReorderHandler<'a> {
     }
 }
 
+// --- Magasins -------------------------------------------------------------
+
+/// Command : crée un magasin, dans l'ordre de rayons par défaut (à rectifier
+/// ensuite avec [`UpdateStoreCommand`]).
+#[derive(Debug, Clone)]
+pub struct CreateStoreCommand {
+    /// Foyer propriétaire (scope).
+    pub household_id: HouseholdId,
+    /// Nom saisi.
+    pub name: String,
+}
+
+/// Résultat d'une création de magasin.
+#[derive(Debug)]
+pub enum CreateStoreResponse {
+    /// Magasin créé.
+    Created(Store),
+    /// Saisie refusée (message destiné à l'UI).
+    Invalid(String),
+    /// Panne technique.
+    Unavailable,
+}
+
+/// Handler de la création d'un magasin.
+pub struct CreateStoreHandler<'a> {
+    stores: &'a dyn StoreRepository,
+}
+
+impl<'a> CreateStoreHandler<'a> {
+    /// Construit le handler.
+    #[must_use]
+    pub fn new(stores: &'a dyn StoreRepository) -> Self {
+        Self { stores }
+    }
+
+    /// Exécute la création. Ne renvoie jamais d'erreur.
+    pub async fn handle(&self, command: CreateStoreCommand) -> CreateStoreResponse {
+        let mut store = match Store::new(command.household_id, &command.name) {
+            Ok(store) => store,
+            Err(error) => return CreateStoreResponse::Invalid(store_error(&error)),
+        };
+
+        // Le nouveau magasin se range en fin de liste : l'ordre des magasins
+        // entre eux ne bouge pas sous les yeux de qui vient d'en ajouter un.
+        let Ok(existing) = self.stores.list(command.household_id).await else {
+            return CreateStoreResponse::Unavailable;
+        };
+        store.position = i32::try_from(existing.len()).unwrap_or(i32::MAX);
+
+        match self.stores.save(&store).await {
+            Ok(()) => CreateStoreResponse::Created(store),
+            Err(_) => CreateStoreResponse::Unavailable,
+        }
+    }
+}
+
+/// Command : renomme un magasin et/ou réordonne ses rayons. Les champs absents
+/// restent inchangés.
+#[derive(Debug, Clone)]
+pub struct UpdateStoreCommand {
+    /// Foyer propriétaire (scope).
+    pub household_id: HouseholdId,
+    /// Magasin visé.
+    pub id: StoreId,
+    /// Nouveau nom, ou `None`.
+    pub name: Option<String>,
+    /// Nouvel ordre de visite des rayons, ou `None`. Complété par le domaine
+    /// (cf. [`Store::reorder`]) : une liste partielle ne perd rien.
+    pub aisles: Option<Vec<String>>,
+}
+
+/// Résultat d'une mise à jour de magasin.
+#[derive(Debug)]
+pub enum UpdateStoreResponse {
+    /// Magasin après mise à jour.
+    Updated(Store),
+    /// Magasin inconnu dans ce foyer.
+    NotFound,
+    /// Saisie refusée (message destiné à l'UI).
+    Invalid(String),
+    /// Panne technique.
+    Unavailable,
+}
+
+/// Handler de la mise à jour d'un magasin.
+pub struct UpdateStoreHandler<'a> {
+    stores: &'a dyn StoreRepository,
+}
+
+impl<'a> UpdateStoreHandler<'a> {
+    /// Construit le handler.
+    #[must_use]
+    pub fn new(stores: &'a dyn StoreRepository) -> Self {
+        Self { stores }
+    }
+
+    /// Exécute la mise à jour. Ne renvoie jamais d'erreur.
+    pub async fn handle(&self, command: UpdateStoreCommand) -> UpdateStoreResponse {
+        let found = self.stores.find(command.household_id, command.id).await;
+        let Ok(found) = found else {
+            return UpdateStoreResponse::Unavailable;
+        };
+        let Some(mut store) = found else {
+            return UpdateStoreResponse::NotFound;
+        };
+
+        if let Some(name) = &command.name {
+            if let Err(error) = store.rename(name) {
+                return UpdateStoreResponse::Invalid(store_error(&error));
+            }
+        }
+        if let Some(aisles) = &command.aisles {
+            store.reorder(aisles);
+        }
+
+        match self.stores.save(&store).await {
+            Ok(()) => UpdateStoreResponse::Updated(store),
+            Err(_) => UpdateStoreResponse::Unavailable,
+        }
+    }
+}
+
+/// Command : supprime un magasin.
+#[derive(Debug, Clone)]
+pub struct DeleteStoreCommand {
+    /// Foyer propriétaire (scope).
+    pub household_id: HouseholdId,
+    /// Magasin visé.
+    pub id: StoreId,
+}
+
+/// Résultat d'une suppression de magasin.
+#[derive(Debug)]
+pub enum DeleteStoreResponse {
+    /// Magasin supprimé.
+    Deleted,
+    /// Magasin inconnu dans ce foyer.
+    NotFound,
+    /// Panne technique.
+    Unavailable,
+}
+
+/// Handler de la suppression d'un magasin.
+pub struct DeleteStoreHandler<'a> {
+    stores: &'a dyn StoreRepository,
+}
+
+impl<'a> DeleteStoreHandler<'a> {
+    /// Construit le handler.
+    #[must_use]
+    pub fn new(stores: &'a dyn StoreRepository) -> Self {
+        Self { stores }
+    }
+
+    /// Exécute la suppression. Ne renvoie jamais d'erreur.
+    pub async fn handle(&self, command: DeleteStoreCommand) -> DeleteStoreResponse {
+        match self.stores.delete(command.household_id, command.id).await {
+            Ok(()) => DeleteStoreResponse::Deleted,
+            Err(RepositoryError::NotFound) => DeleteStoreResponse::NotFound,
+            Err(_) => DeleteStoreResponse::Unavailable,
+        }
+    }
+}
+
+/// Message lisible pour un magasin refusé par le domaine.
+fn store_error(error: &StoreError) -> String {
+    error.to_string()
+}
+
 /// Message lisible pour une quantité refusée par le `kernel`.
 fn quantity_error(error: QuantityError) -> String {
     format!("quantité invalide : {error}")
@@ -483,7 +656,7 @@ fn quantity_error(error: QuantityError) -> String {
 mod tests {
     use super::*;
     use crate::domain::{IngredientReference, ShoppingItem};
-    use crate::testing::{InMemoryReferences, InMemoryShoppingList};
+    use crate::testing::{InMemoryReferences, InMemoryShoppingList, InMemoryStores};
     use kernel::ShoppingItemId;
 
     fn household() -> HouseholdId {
@@ -713,5 +886,114 @@ mod tests {
             })
             .await;
         assert!(matches!(response, AddItemResponse::Invalid(_)));
+    }
+    // --- Magasins ---------------------------------------------------------
+
+    /// Crée un magasin et renvoie le couple (repo, magasin créé).
+    async fn created_store(name: &str) -> (InMemoryStores, Store) {
+        let repo = InMemoryStores::default();
+        let response = CreateStoreHandler::new(&repo)
+            .handle(CreateStoreCommand {
+                household_id: household(),
+                name: name.to_owned(),
+            })
+            .await;
+        match response {
+            CreateStoreResponse::Created(store) => (repo, store),
+            other => panic!("création refusée : {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn creating_a_store_starts_from_the_default_aisle_order() {
+        let (_repo, store) = created_store("Super U").await;
+        assert_eq!(store.name, "Super U");
+        assert_eq!(store.aisles, crate::domain::aisle::default_order());
+    }
+
+    #[tokio::test]
+    async fn stores_are_appended_in_creation_order() {
+        let repo = InMemoryStores::default();
+        let household = household();
+        for name in ["Super U", "Lidl"] {
+            CreateStoreHandler::new(&repo)
+                .handle(CreateStoreCommand {
+                    household_id: household,
+                    name: name.to_owned(),
+                })
+                .await;
+        }
+        let stores = repo.list(household).await.unwrap();
+        assert_eq!(
+            stores
+                .iter()
+                .map(|store| store.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Super U", "Lidl"]
+        );
+    }
+
+    #[tokio::test]
+    async fn creating_a_store_without_a_name_is_rejected() {
+        let repo = InMemoryStores::default();
+        let response = CreateStoreHandler::new(&repo)
+            .handle(CreateStoreCommand {
+                household_id: household(),
+                name: "  ".to_owned(),
+            })
+            .await;
+        assert!(matches!(response, CreateStoreResponse::Invalid(_)));
+    }
+
+    #[tokio::test]
+    async fn updating_a_store_renames_and_reorders() {
+        let (repo, store) = created_store("Super U").await;
+        let response = UpdateStoreHandler::new(&repo)
+            .handle(UpdateStoreCommand {
+                household_id: store.household_id,
+                id: store.id,
+                name: Some("Lidl".to_owned()),
+                aisles: Some(vec!["surgeles".to_owned()]),
+            })
+            .await;
+        let UpdateStoreResponse::Updated(updated) = response else {
+            panic!("mise à jour refusée");
+        };
+        assert_eq!(updated.name, "Lidl");
+        assert_eq!(updated.aisles[0], "surgeles");
+        // Persisté, pas seulement renvoyé.
+        let stored = repo.find(store.household_id, store.id).await.unwrap();
+        assert_eq!(stored.unwrap().aisles[0], "surgeles");
+    }
+
+    #[tokio::test]
+    async fn a_store_of_another_household_is_not_found() {
+        let (repo, store) = created_store("Super U").await;
+        let response = UpdateStoreHandler::new(&repo)
+            .handle(UpdateStoreCommand {
+                household_id: HouseholdId::new(),
+                id: store.id,
+                name: Some("Pirate".to_owned()),
+                aisles: None,
+            })
+            .await;
+        assert!(matches!(response, UpdateStoreResponse::NotFound));
+    }
+
+    #[tokio::test]
+    async fn deleting_a_store_reports_a_missing_one() {
+        let (repo, store) = created_store("Super U").await;
+        let command = DeleteStoreCommand {
+            household_id: store.household_id,
+            id: store.id,
+        };
+        assert!(matches!(
+            DeleteStoreHandler::new(&repo).handle(command.clone()).await,
+            DeleteStoreResponse::Deleted
+        ));
+        assert!(matches!(
+            DeleteStoreHandler::new(&repo).handle(command).await,
+            DeleteStoreResponse::NotFound
+        ));
     }
 }

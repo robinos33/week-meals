@@ -1,14 +1,14 @@
-//! Utilitaires de test partagés : un [`ShoppingListRepository`] et un
-//! [`ReferenceRepository`] en mémoire pour exercer les use cases sans base.
-//! Compilé uniquement pour les tests.
+//! Utilitaires de test partagés : un [`ShoppingListRepository`], un
+//! [`ReferenceRepository`] et un [`StoreRepository`] en mémoire pour exercer
+//! les use cases sans base. Compilé uniquement pour les tests.
 
 use std::sync::Mutex;
 
-use kernel::{HouseholdId, RepositoryError, ShoppingItemId};
+use kernel::{HouseholdId, RepositoryError, ShoppingItemId, StoreId};
 
 use crate::domain::{
     IngredientReference, ReferenceCatalog, ReferenceRepository, ShoppingItem,
-    ShoppingListRepository,
+    ShoppingListRepository, Store, StoreRepository,
 };
 
 /// Repository en mémoire, scopé au foyer comme l'implémentation SQLx.
@@ -150,5 +150,68 @@ impl ShoppingListRepository for InMemoryShoppingList {
             }
         }
         Ok(())
+    }
+}
+
+/// Magasins en mémoire, scopés au foyer comme l'implémentation SQLx.
+#[derive(Default)]
+pub struct InMemoryStores {
+    stores: Mutex<Vec<Store>>,
+}
+
+#[async_trait::async_trait]
+impl StoreRepository for InMemoryStores {
+    async fn list(&self, household_id: HouseholdId) -> Result<Vec<Store>, RepositoryError> {
+        let mut found: Vec<Store> = self
+            .stores
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|store| store.household_id == household_id)
+            .cloned()
+            .collect();
+        found.sort_by(|left, right| {
+            left.position
+                .cmp(&right.position)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        Ok(found)
+    }
+
+    async fn find(
+        &self,
+        household_id: HouseholdId,
+        id: StoreId,
+    ) -> Result<Option<Store>, RepositoryError> {
+        Ok(self
+            .stores
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|store| store.id == id && store.household_id == household_id)
+            .cloned())
+    }
+
+    async fn save(&self, store: &Store) -> Result<(), RepositoryError> {
+        let mut slots = self.stores.lock().unwrap();
+        match slots
+            .iter_mut()
+            .find(|slot| slot.id == store.id && slot.household_id == store.household_id)
+        {
+            Some(slot) => *slot = store.clone(),
+            None => slots.push(store.clone()),
+        }
+        Ok(())
+    }
+
+    async fn delete(&self, household_id: HouseholdId, id: StoreId) -> Result<(), RepositoryError> {
+        let mut slots = self.stores.lock().unwrap();
+        let before = slots.len();
+        slots.retain(|store| !(store.id == id && store.household_id == household_id));
+        if slots.len() == before {
+            Err(RepositoryError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 }

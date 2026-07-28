@@ -82,6 +82,11 @@ id_type! {
     ShoppingItemId
 }
 
+id_type! {
+    /// Identifiant d'un magasin du foyer (ordre de visite des rayons).
+    StoreId
+}
+
 /// Foyer de démonstration seedé par la migration `seed_demo_household`.
 ///
 /// Cible du **mode public** (auth désactivée, cf. `AUTH_DISABLED`) et du **seed

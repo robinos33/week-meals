@@ -44,6 +44,12 @@ describe("foodEmoji", () => {
     expect(foodEmoji("500 g de fromage râpé")).toBe("🧀");
   });
 
+  it("donne aussi un repère aux produits hors alimentaires", () => {
+    expect(foodEmoji("papier toilette")).toBe("🧻");
+    expect(foodEmoji("piles")).toBe("🔋");
+    expect(foodEmoji("croquettes pour chat")).toBe("🐾");
+  });
+
   it("renvoie null pour un aliment inconnu", () => {
     expect(foodEmoji("quinoa")).toBeNull();
     expect(foodEmoji("")).toBeNull();

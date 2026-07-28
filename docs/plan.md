@@ -26,8 +26,16 @@ et faire les courses sans friction. Deux moments d'usage clés :
 - **ShoppingList** — générée depuis une plage de dates du calendrier + ajouts
   manuels. Chaque entrée : nom, quantité, unité, `checked`. Les entrées cochées
   sont regroupées en bas (pas supprimées) ; action « vider les cochés ».
-- **IngredientReference** — référentiel des poids moyens, seedé depuis
-  [data/ingredients.yaml](../data/ingredients.yaml).
+- **IngredientReference** — dictionnaire des ingrédients (nom canonique,
+  synonymes, **rayon**, unité d'achat, poids moyen), seedé depuis
+  [data/ingredients.yaml](../data/ingredients.yaml). Global, pas par foyer.
+- **Aisle** (rayon) — catalogue **fermé** défini côté serveur : le vocabulaire
+  qui range les ingrédients, calqué sur les allées d'un supermarché. Il couvre
+  aussi le non-alimentaire (hygiène, entretien, maison, bébé, animaux), qui va
+  dans le même caddie.
+- **Store** (magasin) — par foyer : un nom et l'**ordre de visite** de ses
+  rayons. C'est lui qui trie la liste de courses en sections, pour n'imposer
+  qu'un seul aller (cf. [ADR-0010](adr/0010-rayons-catalogue-ferme-magasins.md)).
 
 ### Conversion grammes → unités (le cœur métier)
 
@@ -55,7 +63,7 @@ week-meals/
 │   ├── auth/                # passkeys (WebAuthn), foyer, appareils enrôlés
 │   ├── recipes/             # recettes (CRUD, photos, import/export)
 │   ├── meal-plan/           # calendrier midi/soir
-│   ├── shopping-list/       # liste + conversion grammes→unités (cœur métier)
+│   ├── shopping-list/       # liste, conversion grammes→unités (cœur métier), magasins
 │   └── server/              # binaire HTTP (Axum), compose les domaines
 ├── web/                     # React + Vite + TS, PWA
 ├── data/

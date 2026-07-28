@@ -1,10 +1,20 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { THEME_ICONS } from "../components/theme-icons";
 import { useTheme, type ThemePreference } from "../theme/theme-context";
 import { api, ApiError } from "../api/client";
 import { authApi, type DeviceInfo } from "../api/auth";
 import { useHouseholdSettings, useSetWeekStartDay } from "../api/household";
+import {
+  useAisles,
+  useCreateStore,
+  useDeleteStore,
+  useStores,
+  useUpdateStore,
+  type Store,
+} from "../api/stores";
+import { aisleEmoji } from "../lib/aisles";
+import { useDragOrder } from "../lib/drag-order";
 import type { RecipeView } from "../api/recipes";
 import { backupFilename, buildBackup, downloadBackup } from "../lib/backup";
 import {
@@ -32,7 +42,10 @@ const WEEK_DAY_OPTIONS: { value: number; label: string }[] = [
   { value: 0, label: "Dimanche" },
 ];
 
-/** Onglet Paramètres : apparence (thème), appareils enrôlés et déconnexion. */
+/**
+ * Onglet Paramètres : apparence (thème), semaine, magasins, appareils enrôlés,
+ * sauvegarde et déconnexion.
+ */
 export function SettingsScreen() {
   const { preference, setPreference } = useTheme();
   const queryClient = useQueryClient();
@@ -185,6 +198,8 @@ export function SettingsScreen() {
         )}
       </div>
 
+      <StoresSection />
+
       <div className="card settings-section">
         <h2>Appareils</h2>
         {devices.data && devices.data.length > 0 ? (
@@ -266,6 +281,194 @@ export function SettingsScreen() {
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * Réglage des **magasins** : un magasin, c'est un nom et l'ordre dans lequel on
+ * en traverse les rayons. L'onglet Courses s'en sert pour trier la liste et
+ * n'imposer qu'un seul aller.
+ *
+ * Tous les rayons du catalogue y figurent, même ceux qu'on n'achète jamais :
+ * un rayon sans article ne produit aucune section dans la liste, alors qu'un
+ * rayon oublié laisserait ses articles sans place.
+ */
+function StoresSection() {
+  const stores = useStores();
+  const createStore = useCreateStore();
+  const [name, setName] = useState("");
+
+  function create(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return;
+    createStore.mutate(name.trim(), { onSuccess: () => setName("") });
+  }
+
+  return (
+    <div className="card settings-section">
+      <h2>Magasins</h2>
+      <p className="muted" style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+        Rangez les rayons dans l'ordre où vous les traversez : l'onglet Courses
+        peut alors trier la liste magasin par magasin.
+      </p>
+
+      {stores.data && stores.data.length > 0 && (
+        <ul className="store-list">
+          {stores.data.map((store) => (
+            <StoreRow key={store.id} store={store} />
+          ))}
+        </ul>
+      )}
+
+      <form className="store-add" onSubmit={create}>
+        <input
+          className="input"
+          placeholder="Nom du magasin…"
+          aria-label="Nom du magasin"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button
+          className="btn btn--primary"
+          type="submit"
+          disabled={createStore.isPending || !name.trim()}
+        >
+          Ajouter
+        </button>
+      </form>
+      {createStore.isError && (
+        <p className="settings-error" role="alert">
+          La création a échoué. Réessayez.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Un magasin : renommage, suppression, et son parcours de rayons dépliable. */
+function StoreRow({ store }: { store: Store }) {
+  const updateStore = useUpdateStore();
+  const deleteStore = useDeleteStore();
+  const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(store.name);
+
+  function rename(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim()) return;
+    updateStore.mutate({ id: store.id, name: name.trim() });
+    setRenaming(false);
+  }
+
+  function remove() {
+    if (!window.confirm(`Supprimer « ${store.name} » ? L'ordre de ses rayons sera perdu.`)) {
+      return;
+    }
+    deleteStore.mutate(store.id);
+  }
+
+  if (renaming) {
+    return (
+      <li className="store-list__item">
+        <form className="store-rename" onSubmit={rename}>
+          <input
+            className="input"
+            aria-label={`Nom de ${store.name}`}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            autoFocus
+          />
+          <button className="btn btn--primary" type="submit">
+            OK
+          </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              setName(store.name);
+              setRenaming(false);
+            }}
+          >
+            Annuler
+          </button>
+        </form>
+      </li>
+    );
+  }
+
+  return (
+    <li className="store-list__item">
+      <div className="store-list__head">
+        <button
+          className="store-list__name"
+          type="button"
+          onClick={() => setOpen((current) => !current)}
+          aria-expanded={open}
+        >
+          {open ? "▾" : "▸"} {store.name}
+        </button>
+        <button className="btn" type="button" onClick={() => setRenaming(true)}>
+          Renommer
+        </button>
+        <button className="btn btn--danger-ghost" type="button" onClick={remove}>
+          Supprimer
+        </button>
+      </div>
+      {open && <AisleOrder store={store} />}
+    </li>
+  );
+}
+
+/**
+ * L'ordre de visite des rayons d'un magasin, réordonnable à la poignée (ou aux
+ * flèches ↑/↓, pour qui ne fait pas glisser du doigt sur un écran).
+ *
+ * Chaque geste enregistre l'ordre complet : le serveur le renvoie normalisé,
+ * ce qui garde l'affichage d'aplomb même si le catalogue a bougé entre deux
+ * versions.
+ */
+function AisleOrder({ store }: { store: Store }) {
+  const aisles = useAisles();
+  const updateStore = useUpdateStore();
+
+  // Les rayons du magasin, dans leur ordre, portant leur libellé de catalogue.
+  const rows = useMemo(() => {
+    const labels = new Map((aisles.data ?? []).map((aisle) => [aisle.slug, aisle.label]));
+    return store.aisles.map((slug) => ({ id: slug, label: labels.get(slug) ?? slug }));
+  }, [store.aisles, aisles.data]);
+
+  const { order, activeId, listRef, handleProps } = useDragOrder(rows, (ordered) =>
+    updateStore.mutate({ id: store.id, aisles: ordered.map((row) => row.id) }),
+  );
+
+  return (
+    <>
+      <p className="muted store-aisles__hint">
+        Ordre de visite — glissez ≡ (ou ↑/↓ au clavier) pour réordonner.
+      </p>
+      <ul className="store-aisles" ref={listRef}>
+        {order.map((row, index) => (
+          <li className="store-aisles__item" key={row.id} data-dragging={activeId === row.id}>
+            <button
+              className="shopping-row__handle"
+              type="button"
+              aria-label={`Déplacer ${row.label}`}
+              {...handleProps(row.id)}
+            >
+              ≡
+            </button>
+            <span className="store-aisles__rank">{index + 1}</span>
+            <span aria-hidden="true">{aisleEmoji(row.id)}</span>
+            <span className="store-aisles__label">{row.label}</span>
+          </li>
+        ))}
+      </ul>
+      {updateStore.isError && (
+        <p className="settings-error" role="alert">
+          L'ordre n'a pas pu être enregistré. Réessayez.
+        </p>
+      )}
+    </>
   );
 }
 

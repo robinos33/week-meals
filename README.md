@@ -22,6 +22,8 @@ grammages en unités achetables : `600 g de courgettes` devient `3 courgettes`.
 - 📅 **Semaine** — calendrier 7 jours × 2 créneaux (midi/soir), on y place les recettes
 - 🛒 **Liste de courses** — générée depuis une plage de jours du calendrier,
   éditable, cochable en magasin (UX inspirée de Google Keep), **fonctionne hors-ligne**
+- 🏬 **Tri par magasin** — la liste se découpe en rayons, dans l'ordre de visite
+  du magasin où l'on va (paramétrable magasin par magasin)
 - 👥 **Foyer** — auth par **passkeys** (Face ID / empreinte), **aucun email ni
   mot de passe**, enrôlement des appareils par code d'appairage (open-source
   friendly : zéro donnée perso à configurer)
@@ -105,8 +107,14 @@ weekmeals seed-ingredients           # dictionnaire d'ingrédients (global)
 Le **dictionnaire d'ingrédients** ([data/ingredients.yaml](data/ingredients.yaml))
 est global (pas par foyer). Il donne à chaque produit un nom canonique, ses
 synonymes, son rayon, son unité d'achat et, le cas échéant, le poids moyen d'une
-pièce. Il alimente trois choses : le rapprochement des formulations, la
-conversion grammes → unités, et les suggestions de la barre de saisie.
+pièce. Il alimente quatre choses : le rapprochement des formulations, la
+conversion grammes → unités, les suggestions de la barre de saisie et le **tri
+par rayon** en magasin.
+
+Il ne contient d'ailleurs pas que de l'alimentaire : ce qui va dans le même
+caddie y a sa place (papier toilette, lessive, piles, croquettes…). Ces produits
+ne viennent jamais d'une recette, mais y figurer leur donne l'auto-complétion,
+la bonne unité et le bon rayon.
 
 `seed-ingredients` fait un upsert par nom : le rejouer après avoir édité le
 fichier met simplement la base à jour. **Le serveur le rejoue aussi à chaque
@@ -151,6 +159,28 @@ a un champ **« Importer depuis une URL »** qui prérempli les champs (à corri
 avant d'enregistrer). Exposé en API, c'est le serveur qui va chercher l'URL :
 `POST /api/recipes/scrape` est donc gardé contre le **SSRF** (https uniquement, IP
 publiques vérifiées et épinglées, redirections coupées, taille bornée).
+
+### Rayons et magasins (cf. [ADR-0010](docs/adr/0010-rayons-catalogue-ferme-magasins.md))
+
+Le `category` d'un ingrédient est un **rayon**, pris dans un catalogue fermé
+défini côté serveur (`shopping-list::domain::aisle`, exposé par `GET /api/aisles`) :
+fruits, légumes, boulangerie, boucherie, charcuterie, poissonnerie, crèmerie,
+surgelés, épicerie salée, épicerie sucrée, condiments, boissons, hygiène,
+entretien, maison, bébé, animaux. Le découpage suit les **allées d'un magasin**,
+pas les familles d'aliments : les herbes fraîches sont au rayon légumes quand le
+thym séché est aux condiments, et la pâte feuilletée est au frais.
+
+Un **magasin** (Paramètres → Magasins) n'est pas un catalogue de produits mais un
+*trajet* : un nom, et l'ordre dans lequel on en traverse les rayons — chez l'un
+les surgelés sont à l'entrée, chez l'autre juste avant les caisses. L'onglet
+Courses propose alors de trier la liste dans cet ordre, section par section. Le
+magasin choisi est gardé **sur l'appareil** : dans un foyer, chacun ne fait pas
+ses courses au même endroit.
+
+Le tri n'est qu'un affichage — il ne réordonne rien côté serveur, et l'ordre
+manuel (glisser-déposer) reste disponible. Un article dont le rayon est inconnu
+du magasin, ou qui n'en a pas, atterrit dans une section « Autres » en fin de
+parcours : rien ne disparaît jamais d'une liste de courses.
 
 ### Authentification par passkeys (cf. [ADR-0006](docs/adr/0006-auth-passkeys-appareils-enroles.md))
 

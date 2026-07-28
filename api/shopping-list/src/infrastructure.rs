@@ -5,6 +5,7 @@
 //! - [`SqlxReferenceRepository`] — le dictionnaire d'ingrédients (global) ;
 //! - [`SqlxPlannedIngredients`] — projection **en lecture seule** des
 //!   ingrédients planifiés, au travers du calendrier et des recettes ;
+//! - [`SqlxStoreRepository`] — les magasins du foyer et l'ordre de leurs rayons ;
 //! - [`seed`] — chargement du dictionnaire versionné (`data/ingredients.yaml`).
 //!
 //! Requêtes runtime (aucune macro vérifiée à la compilation) ; erreurs SQLx
@@ -16,14 +17,15 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::NaiveDate;
-use kernel::{HouseholdId, Quantity, RepositoryError, ShoppingItemId, Unit};
+use kernel::{HouseholdId, Quantity, RepositoryError, ShoppingItemId, StoreId, Unit};
 use sqlx::{Row, SqlitePool};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::domain::{
     CookedCountRecorder, IngredientReference, PlannedIngredient, PlannedIngredientsSource,
-    ReferenceCatalog, ReferenceRepository, ShoppingItem, ShoppingListRepository,
+    ReferenceCatalog, ReferenceRepository, ShoppingItem, ShoppingListRepository, Store,
+    StoreRepository,
 };
 
 /// Traduit une erreur SQLx en erreur de repository agnostique.
@@ -548,6 +550,144 @@ impl CookedCountRecorder for SqlxCookedCounter {
         .map_err(backend)?;
 
         tx.commit().await.map_err(backend)
+    }
+}
+
+// --- Magasins -------------------------------------------------------------
+
+/// Implémentation SQLx du [`StoreRepository`].
+///
+/// Deux tables : `stores` (le magasin) et `store_aisles` (son parcours, un
+/// rayon par ligne). Les rayons se relisent d'une seule requête par lecture —
+/// il n'y a jamais qu'une poignée de magasins par foyer, pas de N+1 à craindre.
+pub struct SqlxStoreRepository {
+    pool: SqlitePool,
+}
+
+impl SqlxStoreRepository {
+    /// Construit le repository sur un pool partagé.
+    #[must_use]
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+
+    /// Rayons d'un magasin, dans l'ordre de visite.
+    async fn aisles_of(&self, id: StoreId) -> Result<Vec<String>, RepositoryError> {
+        let rows =
+            sqlx::query("select aisle from store_aisles where store_id = ? order by position")
+                .bind(id.as_uuid())
+                .fetch_all(&self.pool)
+                .await
+                .map_err(backend)?;
+        rows.iter()
+            .map(|row| row.try_get::<String, _>("aisle").map_err(backend))
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl StoreRepository for SqlxStoreRepository {
+    async fn list(&self, household_id: HouseholdId) -> Result<Vec<Store>, RepositoryError> {
+        let rows = sqlx::query(
+            "select id, name, position from stores where household_id = ? order by position, name",
+        )
+        .bind(household_id.as_uuid())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+
+        let mut stores = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let id: Uuid = row.try_get("id").map_err(backend)?;
+            let id = StoreId::from(id);
+            stores.push(Store {
+                id,
+                household_id,
+                name: row.try_get("name").map_err(backend)?,
+                aisles: self.aisles_of(id).await?,
+                position: row.try_get("position").map_err(backend)?,
+            });
+        }
+        Ok(stores)
+    }
+
+    async fn find(
+        &self,
+        household_id: HouseholdId,
+        id: StoreId,
+    ) -> Result<Option<Store>, RepositoryError> {
+        let row =
+            sqlx::query("select name, position from stores where id = ? and household_id = ?")
+                .bind(id.as_uuid())
+                .bind(household_id.as_uuid())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(backend)?;
+
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        Ok(Some(Store {
+            id,
+            household_id,
+            name: row.try_get("name").map_err(backend)?,
+            aisles: self.aisles_of(id).await?,
+            position: row.try_get("position").map_err(backend)?,
+        }))
+    }
+
+    async fn save(&self, store: &Store) -> Result<(), RepositoryError> {
+        // En transaction : un magasin ne doit jamais être observé sans son
+        // parcours, ni avec un parcours à moitié réécrit.
+        let mut tx = self.pool.begin().await.map_err(backend)?;
+
+        sqlx::query(
+            "insert into stores (id, household_id, name, position) values (?, ?, ?, ?) \
+             on conflict (id) do update set name = excluded.name, position = excluded.position",
+        )
+        .bind(store.id.as_uuid())
+        .bind(store.household_id.as_uuid())
+        .bind(&store.name)
+        .bind(store.position)
+        .execute(&mut *tx)
+        .await
+        .map_err(backend)?;
+
+        // L'ordre se réécrit en bloc : plus simple, et sans état intermédiaire
+        // où un rayon serait à deux rangs à la fois.
+        sqlx::query("delete from store_aisles where store_id = ?")
+            .bind(store.id.as_uuid())
+            .execute(&mut *tx)
+            .await
+            .map_err(backend)?;
+
+        for (rank, aisle) in store.aisles.iter().enumerate() {
+            sqlx::query("insert into store_aisles (store_id, aisle, position) values (?, ?, ?)")
+                .bind(store.id.as_uuid())
+                .bind(aisle)
+                .bind(i32::try_from(rank).unwrap_or(i32::MAX))
+                .execute(&mut *tx)
+                .await
+                .map_err(backend)?;
+        }
+
+        tx.commit().await.map_err(backend)
+    }
+
+    async fn delete(&self, household_id: HouseholdId, id: StoreId) -> Result<(), RepositoryError> {
+        // `store_aisles` part en cascade (clé étrangère, pragma activé au pool).
+        let result = sqlx::query("delete from stores where id = ? and household_id = ?")
+            .bind(id.as_uuid())
+            .bind(household_id.as_uuid())
+            .execute(&self.pool)
+            .await
+            .map_err(backend)?;
+
+        if result.rows_affected() == 0 {
+            Err(RepositoryError::NotFound)
+        } else {
+            Ok(())
+        }
     }
 }
 
