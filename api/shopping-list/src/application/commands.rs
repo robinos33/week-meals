@@ -490,12 +490,16 @@ mod tests {
         HouseholdId::new()
     }
 
-    /// Dictionnaire de test : de quoi exercer synonymes et qualificatifs.
+    /// Dictionnaire de test : de quoi exercer synonymes, qualificatifs et
+    /// déclinaisons de couleur.
     fn dictionary() -> InMemoryReferences {
         InMemoryReferences::with(vec![
             IngredientReference::new("courgette", "legumes", 250, false),
             IngredientReference::new("tomate", "legumes", 120, false),
             IngredientReference::new("œuf", "cremerie", 55, true).with_aliases(["oeuf"]),
+            IngredientReference::new("poivron", "legumes", 160, false),
+            IngredientReference::new("poivron rouge", "legumes", 160, false),
+            IngredientReference::new("poivron jaune", "legumes", 160, false),
             IngredientReference::bulk("farine", "epicerie", Unit::G),
         ])
     }
@@ -647,11 +651,43 @@ mod tests {
     async fn a_known_ingredient_takes_the_dictionary_name_and_aisle() {
         let repo = InMemoryShoppingList::default();
         let h = household();
-        add(&repo, h, "Courgettes jaunes", 2.0, Unit::Piece).await;
+        add(&repo, h, "Grosses courgettes bio", 2.0, Unit::Piece).await;
 
         let items = repo.list(h).await.unwrap();
         assert_eq!(items[0].name, "courgette", "nom canonique du dictionnaire");
         assert_eq!(items[0].category.as_deref(), Some("legumes"));
+    }
+
+    #[tokio::test]
+    async fn colour_variants_get_their_own_lines() {
+        // Trois produits différents en rayon, donc trois lignes : personne ne
+        // veut repartir avec des poivrons jaunes pour une recette qui demande
+        // du rouge.
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "poivron rouge", 2.0, Unit::Piece).await;
+        add(&repo, h, "poivrons jaunes", 1.0, Unit::Piece).await;
+        add(&repo, h, "poivron", 3.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 3, "aucune fusion entre déclinaisons");
+        let mut names: Vec<&str> = items.iter().map(|item| item.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, ["poivron", "poivron jaune", "poivron rouge"]);
+    }
+
+    #[tokio::test]
+    async fn a_colour_variant_absent_from_the_dictionary_keeps_its_wording() {
+        // Non référencé : la ligne garde le nom saisi plutôt que d'être
+        // rabattue sur le générique. Sans rayon, mais sans erreur d'achat.
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "poivron vert", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "poivron vert");
+        assert_eq!(items[0].category, None);
     }
 
     #[tokio::test]

@@ -34,23 +34,20 @@ const STOP_WORDS = new Set([
 ]);
 
 /**
- * Qualificatifs qui ne changent pas le produit à acheter. Retirés seulement
- * pour la « clé produit » : « courgette jaune » est une courgette, alors que
- * « lait de coco » n'est pas un lait.
+ * Qualificatifs qui ne changent **pas ce qu'on met dans le caddie** : calibre,
+ * maturité, mode de culture, découpe faite à la maison. Retirés seulement pour
+ * la « clé produit ».
+ *
+ * Miroir exact de la table du serveur (`shopping-list/domain/matching.rs`) —
+ * les couleurs en sont volontairement absentes : « poivron rouge » n'est pas
+ * « poivron jaune », pas plus que « lait de coco » n'est du lait. Toute
+ * addition ici doit passer le test « je repars du magasin avec le même
+ * produit sans ce mot ».
  */
 const QUALIFIERS = new Set([
   "bio",
   "frais",
   "fraiche",
-  "surgele",
-  "surgelee",
-  "congele",
-  "congelee",
-  "sec",
-  "seche",
-  "sechee",
-  "entier",
-  "entiere",
   "gros",
   "grosse",
   "petit",
@@ -59,12 +56,12 @@ const QUALIFIERS = new Set([
   "moyenne",
   "grand",
   "grande",
-  "moulu",
-  "moulue",
-  "rape",
-  "rapee",
-  "concasse",
-  "concassee",
+  "fin",
+  "fine",
+  "long",
+  "longue",
+  "rond",
+  "ronde",
   "emince",
   "emincee",
   "coupe",
@@ -75,32 +72,9 @@ const QUALIFIERS = new Set([
   "cuite",
   "mur",
   "mure",
-  "nouveau",
-  "nouvelle",
+  "bien",
   "nature",
   "extra",
-  "fin",
-  "fine",
-  "doux",
-  "douce",
-  "rouge",
-  "jaune",
-  "vert",
-  "verte",
-  "blanc",
-  "blanche",
-  "noir",
-  "noire",
-  "long",
-  "longue",
-  "rond",
-  "ronde",
-  "bien",
-  "demi",
-  "ecreme",
-  "ecremee",
-  "allege",
-  "allegee",
 ]);
 
 /** Minuscule sans accent ni ligature (« Œufs » → « oeufs »). */
@@ -136,7 +110,7 @@ export function canonicalKey(name: string): string {
   return tokens(name).join(" ");
 }
 
-/** Clé produit, qualificatifs retirés (« courgettes jaunes » → « courgette »). */
+/** Clé produit, qualificatifs retirés (« grosses courgettes » → « courgette »). */
 export function coreKey(name: string): string {
   return tokens(name)
     .filter((token) => !QUALIFIERS.has(token))
