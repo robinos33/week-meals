@@ -16,6 +16,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { api, eventSource } from "./client";
+import { canonicalKey } from "../lib/ingredient-match";
 import { formatAmount, formatDecimal } from "../lib/quantity";
 
 /** Unités acceptées par l'API (mêmes que les recettes). */
@@ -49,6 +50,36 @@ export function useShoppingList() {
   return useQuery({
     queryKey: LIST_KEY,
     queryFn: () => api.get<ShoppingItem[]>("/shopping-list"),
+  });
+}
+
+/**
+ * Une entrée du dictionnaire d'ingrédients : le vocabulaire que l'API applique
+ * à la génération et à l'ajout (nom canonique, rayon, unité d'achat), servi ici
+ * à l'auto-complétion de la saisie.
+ */
+export interface DictionaryEntry {
+  name: string;
+  category: string;
+  unit: Unit;
+  countable: boolean;
+  /** Synonymes reconnus à la frappe (« oeuf » → « œuf »), jamais affichés. */
+  aliases: string[];
+}
+
+/**
+ * Le dictionnaire d'ingrédients (global, hors clé de la liste pour ne pas être
+ * invalidé à chaque coche).
+ *
+ * Il ne bouge qu'aux déploiements : on le garde longtemps et il survit
+ * hors-ligne avec le reste du cache persisté — les suggestions restent donc
+ * disponibles en rayon, réseau ou pas.
+ */
+export function useIngredientDictionary() {
+  return useQuery({
+    queryKey: ["ingredient-dictionary"],
+    queryFn: () => api.get<DictionaryEntry[]>("/shopping-list/dictionary"),
+    staleTime: 24 * 60 * 60 * 1000,
   });
 }
 
@@ -307,21 +338,19 @@ export function useShoppingSync(): { state: SyncState } {
   return { state };
 }
 
-/** Nom normalisé pour comparer deux articles (casse et espaces ignorés). */
-function normalizeName(name: string): string {
-  return name.trim().toLowerCase();
-}
-
 /**
  * Deux articles partagent-ils le même combo **produit / quantité / unité** ?
  * Sert à garantir l'unicité côté saisie (pas de doublon exact dans la liste).
+ *
+ * Les noms sont comparés sur leur clé canonique, comme le fait l'API : « 3
+ * Courgettes » retrouve bien la ligne « courgette » déjà cochée.
  */
 export function sameCombo(
   item: Pick<ShoppingItem, "name" | "amount" | "unit">,
   candidate: { name: string; amount: number; unit: Unit },
 ): boolean {
   return (
-    normalizeName(item.name) === normalizeName(candidate.name) &&
+    canonicalKey(item.name) === canonicalKey(candidate.name) &&
     Math.abs(item.amount - candidate.amount) < 1e-9 &&
     item.unit === candidate.unit
   );

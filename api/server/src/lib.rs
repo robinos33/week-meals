@@ -128,6 +128,53 @@ pub async fn migrate(pool: &SqlitePool) -> Result<(), sqlx::migrate::MigrateErro
     sqlx::migrate!("../migrations").run(pool).await
 }
 
+/// Emplacements essayés pour le dictionnaire versionné, dans l'ordre :
+/// depuis la racine du dépôt (image Docker, `cargo run` documenté) puis depuis
+/// `api/` (`cd api && cargo run`). `INGREDIENTS_FILE` court-circuite les deux.
+const INGREDIENTS_FILE_CANDIDATES: [&str; 2] =
+    ["data/ingredients.yaml", "../data/ingredients.yaml"];
+
+/// Rejoue le seed du dictionnaire d'ingrédients au démarrage.
+///
+/// Le fichier versionné est la source de vérité, la base n'en est qu'un cache :
+/// le seed est un upsert par nom, donc rejouable à chaque démarrage. C'est ce
+/// qui garantit qu'un déploiement embarque bien le vocabulaire de la version
+/// déployée, sans étape manuelle à ne pas oublier.
+///
+/// Un échec ne bloque **pas** le démarrage : sans dictionnaire, la liste de
+/// courses fonctionne toujours — elle perd le rapprochement des formulations
+/// et les suggestions de saisie, pas l'essentiel.
+pub async fn seed_ingredient_dictionary(pool: &SqlitePool) {
+    let configured = std::env::var("INGREDIENTS_FILE").ok();
+    let candidates: Vec<String> = configured.map_or_else(
+        || {
+            INGREDIENTS_FILE_CANDIDATES
+                .iter()
+                .map(|path| (*path).to_owned())
+                .collect()
+        },
+        |path| vec![path],
+    );
+
+    let Some(path) = candidates
+        .iter()
+        .find(|path| std::path::Path::new(path).exists())
+    else {
+        tracing::warn!(
+            "dictionnaire d'ingrédients introuvable ({})",
+            candidates.join(", ")
+        );
+        return;
+    };
+
+    match shopping_list::infrastructure::seed::seed_from_file(pool, std::path::Path::new(path))
+        .await
+    {
+        Ok(count) => tracing::info!("dictionnaire d'ingrédients à jour ({count} entrées)"),
+        Err(error) => tracing::warn!("dictionnaire d'ingrédients non chargé ({path}) : {error}"),
+    }
+}
+
 /// Extrait l'hôte (sans schéma ni port) d'une URL, pour déduire le `rp_id`.
 /// S'appuie sur le parseur d'`url`, déjà présent via `webauthn-rs`, plutôt que
 /// sur un découpage de chaîne à la main.

@@ -380,10 +380,99 @@
 }
 
 /* Mobile d'abord : le nom occupe sa propre ligne (sinon il est écrasé par la
-   quantité et l'unité), le reste se partage la seconde. */
-.quick-add__name {
+   quantité et l'unité), le reste se partage la seconde. Le champ est enveloppé
+   pour ancrer la liste de suggestions juste dessous. */
+.quick-add__field {
+  position: relative;
   flex: 1 1 100%;
   min-width: 0;
+}
+
+.quick-add__name {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Champ auto-complété (ajout rapide et édition d'une ligne) : ancre la liste
+   de suggestions juste sous l'input. */
+.combo {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.combo > .input {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Suggestions d'auto-complétion : superposées à la liste, jamais poussant le
+   contenu (sinon les articles sauteraient à chaque frappe). */
+.suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  /* En édition inline, le champ ne fait qu'une fraction de la ligne : la liste
+     déborde alors sur la droite plutôt que d'écraser les libellés — sans
+     jamais dépasser l'écran. */
+  min-width: min(17rem, 80vw);
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+.suggestions__option {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.5rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestions__option[data-highlighted="true"],
+.suggestions__option:hover {
+  background: var(--color-surface-2);
+}
+
+.suggestions__emoji {
+  flex: 0 0 auto;
+}
+
+.suggestions__name {
+  flex: 1 1 auto;
+  /* Plancher de lisibilité : c'est le contexte, à droite, qui se tronque en
+     premier quand la place manque. */
+  min-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Contexte de droite : « déjà 3 pièce(s) — sera cumulé », ou le rayon. Il
+   s'efface (tronqué) avant le nom, qui reste l'information utile. */
+.suggestions__hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--color-muted);
 }
 
 /* La quantité garde une largeur compacte : la place gagnée va au champ nom. */
@@ -401,7 +490,7 @@
 
 /* À partir d'un écran large, tout tient sur une seule ligne. */
 @media (min-width: 30rem) {
-  .quick-add__name {
+  .quick-add__field {
     flex: 1 1 10rem;
   }
 }
@@ -554,7 +643,8 @@
   align-items: center;
 }
 
-.inline-edit .input:first-child {
+/* Le nom (combobox auto-complété) prend la place restante de la ligne. */
+.inline-edit .combo {
   flex: 1 1 8rem;
   min-width: 0;
 }

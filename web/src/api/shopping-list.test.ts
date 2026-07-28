@@ -36,6 +36,13 @@ describe("sameCombo", () => {
     );
   });
 
+  it("ignore le pluriel et les accents", () => {
+    // Même clé canonique que l'API : « 3 Pommes » retrouve la ligne « Pomme ».
+    expect(sameCombo(item({ name: "Pomme" }), { name: "Pommes", amount: 3, unit: "piece" })).toBe(
+      true,
+    );
+  });
+
   it("distingue une quantité différente", () => {
     expect(sameCombo(item({ amount: 3 }), { name: "Pomme", amount: 5, unit: "piece" })).toBe(false);
   });

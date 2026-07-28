@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use chrono::NaiveDate;
 use kernel::{HouseholdId, Quantity, QuantityError, RepositoryError, ShoppingItemId, Unit};
 
-use crate::domain::reference::normalize_name;
 use crate::domain::{
     aggregate_purchases, CookedCountRecorder, PlannedIngredientsSource, ReferenceRepository,
     ShoppingItem, ShoppingListRepository,
@@ -87,11 +86,13 @@ impl<'a> GenerateListHandler<'a> {
         };
 
         // Ce qui était déjà coché le reste après régénération : sinon, ajouter
-        // une recette à la semaine ferait « décocher » tout le caddie.
+        // une recette à la semaine ferait « décocher » tout le caddie. Le
+        // rapprochement passe par le dictionnaire : une ligne cochée sous une
+        // ancienne formulation reste reconnue.
         let checked: HashSet<String> = existing
             .iter()
             .filter(|item| item.generated && item.checked)
-            .map(|item| normalize_name(&item.name))
+            .map(|item| catalog.group_key(&item.name))
             .collect();
 
         let purchases = aggregate_purchases(&planned, &catalog);
@@ -101,7 +102,7 @@ impl<'a> GenerateListHandler<'a> {
             .map(|(index, purchase)| ShoppingItem {
                 id: ShoppingItemId::new(),
                 household_id: command.household_id,
-                checked: checked.contains(&normalize_name(&purchase.name)),
+                checked: checked.contains(&catalog.group_key(&purchase.name)),
                 name: purchase.name,
                 quantity: purchase.quantity,
                 category: purchase.category,
@@ -169,21 +170,31 @@ pub enum AddItemResponse {
 /// Handler de l'ajout manuel.
 pub struct AddItemHandler<'a> {
     items: &'a dyn ShoppingListRepository,
+    references: &'a dyn ReferenceRepository,
 }
 
 impl<'a> AddItemHandler<'a> {
     /// Construit le handler.
     #[must_use]
-    pub fn new(items: &'a dyn ShoppingListRepository) -> Self {
-        Self { items }
+    pub fn new(
+        items: &'a dyn ShoppingListRepository,
+        references: &'a dyn ReferenceRepository,
+    ) -> Self {
+        Self { items, references }
     }
 
     /// Exécute l'ajout. Ne renvoie jamais d'erreur.
     ///
     /// Additionne plutôt que de dupliquer : si un article **non coché** du même
-    /// ingrédient (nom normalisé) et de **même dimension** existe déjà, la
-    /// quantité est cumulée sur cette ligne (dans son unité) — jamais deux fois
-    /// le même ingrédient dans la liste. À défaut, nouvelle ligne manuelle.
+    /// ingrédient et de **même dimension** existe déjà, la quantité est cumulée
+    /// sur cette ligne (dans son unité) — jamais deux fois le même ingrédient
+    /// dans la liste. À défaut, nouvelle ligne manuelle.
+    ///
+    /// Le rapprochement passe par le dictionnaire, pas par l'égalité des
+    /// chaînes : taper « tomates » cumule sur la ligne « tomate » générée
+    /// depuis le calendrier, et la ligne prend le nom canonique et le rayon du
+    /// dictionnaire. Un ingrédient qui n'y figure pas est ajouté tel quel, sur
+    /// sa seule clé canonique (casse, accents, pluriel).
     pub async fn handle(&self, command: AddItemCommand) -> AddItemResponse {
         if command.name.trim().is_empty() {
             return AddItemResponse::Invalid("le nom ne peut pas être vide".to_owned());
@@ -193,15 +204,26 @@ impl<'a> AddItemHandler<'a> {
             Err(error) => return AddItemResponse::Invalid(quantity_error(error)),
         };
 
+        // Un dictionnaire indisponible ne doit pas empêcher d'ajouter du
+        // papier toilette à la liste : on retombe sur un catalogue vide, donc
+        // sur le rapprochement par clé canonique.
+        let catalog = self.references.catalog().await.unwrap_or_default();
+        let reference = catalog.resolve(&command.name);
+        let name = reference.map_or_else(
+            || command.name.trim().to_owned(),
+            |found| found.name.clone(),
+        );
+        let category = reference.map(|found| found.category.clone());
+
         let existing = match self.items.list(command.household_id).await {
             Ok(items) => items,
             Err(_) => return AddItemResponse::Unavailable,
         };
-        let key = normalize_name(&command.name);
+        let key = catalog.group_key(&name);
         let mergeable = existing.into_iter().find(|item| {
             !item.checked
                 && item.quantity.dimension() == quantity.dimension()
-                && normalize_name(&item.name) == key
+                && catalog.group_key(&item.name) == key
         });
 
         if let Some(target) = mergeable {
@@ -212,7 +234,8 @@ impl<'a> AddItemHandler<'a> {
             };
         }
 
-        let item = ShoppingItem::manual(command.household_id, command.name, quantity);
+        let mut item = ShoppingItem::manual(command.household_id, name, quantity);
+        item.category = category;
         match self.items.add(&item).await {
             Ok(()) => AddItemResponse::Added(item),
             Err(_) => AddItemResponse::Unavailable,
@@ -459,12 +482,22 @@ fn quantity_error(error: QuantityError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ShoppingItem;
-    use crate::testing::InMemoryShoppingList;
+    use crate::domain::{IngredientReference, ShoppingItem};
+    use crate::testing::{InMemoryReferences, InMemoryShoppingList};
     use kernel::ShoppingItemId;
 
     fn household() -> HouseholdId {
         HouseholdId::new()
+    }
+
+    /// Dictionnaire de test : de quoi exercer synonymes et qualificatifs.
+    fn dictionary() -> InMemoryReferences {
+        InMemoryReferences::with(vec![
+            IngredientReference::new("courgette", "legumes", 250, false),
+            IngredientReference::new("tomate", "legumes", 120, false),
+            IngredientReference::new("œuf", "cremerie", 55, true).with_aliases(["oeuf"]),
+            IngredientReference::bulk("farine", "epicerie", Unit::G),
+        ])
     }
 
     fn generated(household_id: HouseholdId, name: &str, amount: f64, unit: Unit) -> ShoppingItem {
@@ -481,7 +514,7 @@ mod tests {
     }
 
     async fn add(repo: &InMemoryShoppingList, h: HouseholdId, name: &str, amount: f64, unit: Unit) {
-        let response = AddItemHandler::new(repo)
+        let response = AddItemHandler::new(repo, &dictionary())
             .handle(AddItemCommand {
                 household_id: h,
                 name: name.to_owned(),
@@ -586,9 +619,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_variant_spelling_merges_into_the_existing_line() {
+        // Le cas qui motive le dictionnaire : la ligne générée dit « tomate »,
+        // on tape « Tomates » — une seule ligne, cumulée.
+        let h = household();
+        let repo = InMemoryShoppingList::with(vec![generated(h, "tomate", 3.0, Unit::Piece)]);
+        add(&repo, h, "Tomates", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "tomate");
+        assert_eq!(items[0].quantity, Quantity::new(5.0, Unit::Piece).unwrap());
+    }
+
+    #[tokio::test]
+    async fn an_alias_merges_into_the_canonical_line() {
+        let h = household();
+        let repo = InMemoryShoppingList::with(vec![generated(h, "œuf", 6.0, Unit::Piece)]);
+        add(&repo, h, "oeufs", 6.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, Quantity::new(12.0, Unit::Piece).unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_known_ingredient_takes_the_dictionary_name_and_aisle() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "Courgettes jaunes", 2.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items[0].name, "courgette", "nom canonique du dictionnaire");
+        assert_eq!(items[0].category.as_deref(), Some("legumes"));
+    }
+
+    #[tokio::test]
+    async fn an_unknown_ingredient_keeps_its_own_name() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "Papier toilette", 1.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items[0].name, "Papier toilette");
+        assert_eq!(items[0].category, None);
+    }
+
+    #[tokio::test]
     async fn empty_name_is_rejected() {
         let repo = InMemoryShoppingList::default();
-        let response = AddItemHandler::new(&repo)
+        let response = AddItemHandler::new(&repo, &dictionary())
             .handle(AddItemCommand {
                 household_id: household(),
                 name: "   ".to_owned(),

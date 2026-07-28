@@ -2594,9 +2594,12 @@ dependencies = [
  "chrono",
  "kernel",
  "serde",
+ "serde_yaml",
  "sqlx",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-stream",
+ "unicode-normalization",
  "uuid",
 ]
 

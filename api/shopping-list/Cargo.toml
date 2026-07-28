@@ -18,6 +18,13 @@ tokio-stream = { workspace = true }
 serde = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+# Dépliage des accents du rapprochement d'ingrédients (« Œufs » → « oeuf ») :
+# même mécanique que la clé de recherche des recettes.
+unicode-normalization = { workspace = true }
+# Le dictionnaire versionné (`data/ingredients.yaml`) est chargé par
+# l'infrastructure, aussi bien par la CLI de seed que par le serveur.
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -4,13 +4,16 @@
 //!
 //! Étapes :
 //!
-//! 1. **Agréger** les quantités d'un même ingrédient sur toutes les recettes
+//! 1. **Rapprocher** chaque nom du dictionnaire : « Courgettes », « courgette
+//!    jaune » et « courgettes » désignent le même légume et se regroupent sous
+//!    son nom canonique (cf. [`ReferenceCatalog::resolve`]).
+//! 2. **Agréger** les quantités d'un même ingrédient sur toutes les recettes
 //!    planifiées (600 g + 300 g de courgettes → 900 g).
-//! 2. **Convertir** via le référentiel : `900 g ÷ 250 g/pièce → 4 courgettes`
+//! 3. **Convertir** via le dictionnaire : `900 g ÷ 250 g/pièce → 4 courgettes`
 //!    (arrondi **supérieur**).
-//! 3. Les ingrédients **comptables** (œufs, ail…) restent en pièces ; les
-//!    **vracs** sans entrée au référentiel (farine, lait…) restent dans leur
-//!    unité de base (g / mL).
+//! 4. Les ingrédients **comptables** (œufs, ail…) restent en pièces ; ceux qui
+//!    n'ont pas de poids moyen (farine, lait…), référencés ou non, restent dans
+//!    leur unité de base (g / mL).
 //!
 //! La sortie exprime les vracs dans l'unité de base de leur dimension
 //! (gramme, millilitre, pièce) ; le confort d'affichage (g → kg, mL → L) est
@@ -18,7 +21,7 @@
 
 use kernel::{Dimension, Quantity, Unit};
 
-use super::reference::{normalize_name, ReferenceCatalog};
+use super::reference::{IngredientReference, ReferenceCatalog};
 
 /// Marge de tolérance retranchée avant l'arrondi supérieur, pour qu'une
 /// division qui « tombe juste » en arithmétique réelle (ex. `500 / 250 = 2`)
@@ -58,12 +61,15 @@ pub struct PurchaseItem {
     pub category: Option<String>,
 }
 
-/// Accumulateur par ingrédient, indexé sur le nom normalisé, dans l'ordre de
-/// première apparition (sortie déterministe).
+/// Accumulateur par ingrédient, indexé sur la clé de regroupement du
+/// dictionnaire, dans l'ordre de première apparition (sortie déterministe).
 #[derive(Debug)]
-struct Aggregate {
-    /// Nom affiché : nom tel que rencontré la première fois.
+struct Aggregate<'a> {
+    /// Nom affiché à défaut d'entrée au dictionnaire : nom tel que rencontré la
+    /// première fois.
     display_name: String,
+    /// Entrée du dictionnaire rapprochée, si le nom y a été reconnu.
+    reference: Option<&'a IngredientReference>,
     /// Masse cumulée, en grammes (unité de base masse).
     mass_g: f64,
     /// Volume cumulé, en millilitres (unité de base volume).
@@ -72,10 +78,11 @@ struct Aggregate {
     pieces: f64,
 }
 
-impl Aggregate {
-    fn new(display_name: String) -> Self {
+impl<'a> Aggregate<'a> {
+    fn new(display_name: String, reference: Option<&'a IngredientReference>) -> Self {
         Self {
             display_name,
+            reference,
             mass_g: 0.0,
             volume_ml: 0.0,
             pieces: 0.0,
@@ -94,97 +101,94 @@ impl Aggregate {
 /// Agrège les ingrédients planifiés et les convertit en lignes de liste de
 /// courses achetables.
 ///
-/// Les quantités d'un même ingrédient (à la casse et aux espaces près) sont
-/// cumulées. Un ingrédient **référencé** est rendu en pièces (arrondi
-/// supérieur) ; un ingrédient **non référencé** (vrac) est rendu dans l'unité
-/// de base de chaque dimension présente. Les lignes de quantité nulle sont
-/// omises. L'ordre de sortie suit la première apparition de chaque
-/// ingrédient.
+/// Les quantités d'un même ingrédient sont cumulées, les formulations étant
+/// d'abord rapprochées du dictionnaire (« Courgettes » et « courgette jaune »
+/// tombent sur la même ligne). Un ingrédient **doté d'un poids moyen** est
+/// rendu en pièces (arrondi supérieur) ; les autres sont rendus dans l'unité de
+/// base de chaque dimension présente. Les lignes de quantité nulle sont omises.
+/// L'ordre de sortie suit la première apparition de chaque ingrédient.
 #[must_use]
 pub fn aggregate_purchases(
     planned: &[PlannedIngredient],
     catalog: &ReferenceCatalog,
 ) -> Vec<PurchaseItem> {
-    // Regroupement ordonné : un Vec pour l'ordre, un index nom→position.
+    // Regroupement ordonné : un Vec pour l'ordre, un index clé→position.
     let mut order: Vec<String> = Vec::new();
     let mut aggregates: std::collections::HashMap<String, Aggregate> =
         std::collections::HashMap::new();
 
     for ingredient in planned {
-        let key = normalize_name(&ingredient.name);
+        let key = catalog.group_key(&ingredient.name);
         let aggregate = aggregates.entry(key.clone()).or_insert_with(|| {
             order.push(key.clone());
-            Aggregate::new(ingredient.name.trim().to_string())
+            Aggregate::new(
+                ingredient.name.trim().to_string(),
+                catalog.resolve(&ingredient.name),
+            )
         });
         aggregate.add(ingredient.quantity);
     }
 
     let mut items = Vec::new();
     for key in order {
-        let aggregate = &aggregates[&key];
-        match catalog.find(&key) {
-            Some(reference) => emit_referenced(&mut items, aggregate, reference),
-            None => emit_bulk(&mut items, aggregate),
-        }
+        emit(&mut items, &aggregates[&key]);
     }
     items
 }
 
-/// Ingrédient présent au référentiel : tout se ramène à des pièces via le
-/// poids moyen (les pièces déjà comptées font l'aller-retour à l'identique).
-fn emit_referenced(
-    items: &mut Vec<PurchaseItem>,
-    aggregate: &Aggregate,
-    reference: &super::reference::IngredientReference,
-) {
-    let avg = f64::from(reference.avg_weight_g);
-    let convertible_g = aggregate.mass_g + aggregate.pieces * avg;
+/// Produit les lignes d'un ingrédient agrégé.
+///
+/// Nom et rayon viennent du dictionnaire dès que le nom y a été rapproché — la
+/// liste parle donc toujours le même vocabulaire, quelle que soit la
+/// formulation des recettes. Avec un poids moyen, tout se ramène à des pièces
+/// (les pièces déjà comptées font l'aller-retour à l'identique) ; sans lui,
+/// chaque dimension présente donne une ligne dans son unité de base.
+fn emit(items: &mut Vec<PurchaseItem>, aggregate: &Aggregate) {
+    let name = aggregate
+        .reference
+        .map_or_else(|| aggregate.display_name.clone(), |r| r.name.clone());
+    let category = aggregate
+        .reference
+        .map(|reference| reference.category.clone());
 
-    if convertible_g > 0.0 {
-        let pieces = ceil_to_pieces(convertible_g, avg);
-        if pieces > 0 {
+    if let Some(avg) = aggregate.reference.and_then(|r| r.avg_weight_g) {
+        let avg = f64::from(avg);
+        let convertible_g = aggregate.mass_g + aggregate.pieces * avg;
+        if convertible_g > 0.0 {
+            let pieces = ceil_to_pieces(convertible_g, avg);
+            if pieces > 0 {
+                items.push(PurchaseItem {
+                    name: name.clone(),
+                    quantity: piece_quantity(pieces),
+                    category: category.clone(),
+                });
+            }
+        }
+    } else {
+        if aggregate.mass_g > 0.0 {
             items.push(PurchaseItem {
-                name: reference.name.clone(),
-                quantity: piece_quantity(pieces),
-                category: Some(reference.category.clone()),
+                name: name.clone(),
+                quantity: base_quantity(aggregate.mass_g, Unit::G),
+                category: category.clone(),
+            });
+        }
+        if aggregate.pieces > 0.0 {
+            items.push(PurchaseItem {
+                name: name.clone(),
+                quantity: base_quantity(aggregate.pieces, Unit::Piece),
+                category: category.clone(),
             });
         }
     }
 
-    // Cas limite : un ingrédient pesé référencé reçu en volume ne peut pas
-    // être converti en pièces (le référentiel est massique). Plutôt que de le
-    // perdre, on le conserve en vrac volumique.
+    // Un ingrédient converti en pièces reçu en volume n'est pas convertible
+    // (le dictionnaire est massique). Plutôt que de le perdre, on le conserve
+    // en volume — même chemin que pour un vrac liquide.
     if aggregate.volume_ml > 0.0 {
         items.push(PurchaseItem {
-            name: reference.name.clone(),
+            name,
             quantity: base_quantity(aggregate.volume_ml, Unit::Ml),
-            category: Some(reference.category.clone()),
-        });
-    }
-}
-
-/// Ingrédient absent du référentiel (vrac) : conservé dans l'unité de base de
-/// chaque dimension présente.
-fn emit_bulk(items: &mut Vec<PurchaseItem>, aggregate: &Aggregate) {
-    if aggregate.mass_g > 0.0 {
-        items.push(PurchaseItem {
-            name: aggregate.display_name.clone(),
-            quantity: base_quantity(aggregate.mass_g, Unit::G),
-            category: None,
-        });
-    }
-    if aggregate.volume_ml > 0.0 {
-        items.push(PurchaseItem {
-            name: aggregate.display_name.clone(),
-            quantity: base_quantity(aggregate.volume_ml, Unit::Ml),
-            category: None,
-        });
-    }
-    if aggregate.pieces > 0.0 {
-        items.push(PurchaseItem {
-            name: aggregate.display_name.clone(),
-            quantity: base_quantity(aggregate.pieces, Unit::Piece),
-            category: None,
+            category,
         });
     }
 }
@@ -222,8 +226,9 @@ mod tests {
         ReferenceCatalog::from_iter([
             IngredientReference::new("courgette", "legumes", 250, false),
             IngredientReference::new("aubergine", "legumes", 300, false),
-            IngredientReference::new("œuf", "cremerie", 55, true),
+            IngredientReference::new("œuf", "cremerie", 55, true).with_aliases(["oeuf"]),
             IngredientReference::new("gousse d'ail", "legumes", 7, true),
+            IngredientReference::bulk("lait", "cremerie", Unit::Ml),
         ])
     }
 
@@ -340,7 +345,8 @@ mod tests {
 
     #[test]
     fn bulk_liquid_stays_in_millilitres() {
-        // Lait : vrac liquide → agrégé en mL (0,5 L + 200 mL = 700 mL).
+        // Lait : référencé mais sans poids moyen → agrégé en mL (0,5 L + 200 mL
+        // = 700 mL), avec le rayon du dictionnaire.
         let planned = [
             PlannedIngredient::new("lait", Quantity::new(0.5, Unit::L).unwrap()),
             PlannedIngredient::new("lait", ml(200.0)),
@@ -348,7 +354,57 @@ mod tests {
         let items = aggregate_purchases(&planned, &catalog());
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].quantity, ml(700.0));
+        assert_eq!(items[0].category.as_deref(), Some("cremerie"));
+    }
+
+    #[test]
+    fn unreferenced_liquid_has_no_category() {
+        let planned = [PlannedIngredient::new("sirop d'agave", ml(200.0))];
+        let items = aggregate_purchases(&planned, &catalog());
+        assert_eq!(items[0].quantity, ml(200.0));
         assert_eq!(items[0].category, None);
+    }
+
+    #[test]
+    fn spelling_variants_land_on_the_same_line() {
+        // Le nerf du dictionnaire : trois formulations d'un même légume dans
+        // trois recettes ne font qu'une ligne. 600 + 250 + 250 = 1100 g → 5.
+        let planned = [
+            PlannedIngredient::new("Courgettes", g(600.0)),
+            PlannedIngredient::new("courgette jaune", g(250.0)),
+            PlannedIngredient::new("COURGETTE", g(250.0)),
+        ];
+        let items = aggregate_purchases(&planned, &catalog());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "courgette");
+        assert_eq!(items[0].quantity, piece(5.0));
+    }
+
+    #[test]
+    fn aliases_join_the_canonical_entry() {
+        // « oeufs » (sans ligature) est un synonyme de « œuf ».
+        let planned = [
+            PlannedIngredient::new("oeufs", piece(2.0)),
+            PlannedIngredient::new("œuf", piece(4.0)),
+        ];
+        let items = aggregate_purchases(&planned, &catalog());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "œuf");
+        assert_eq!(items[0].quantity, piece(6.0));
+    }
+
+    #[test]
+    fn unknown_ingredients_merge_on_their_canonical_key() {
+        // Hors dictionnaire, le rapprochement se limite au nom lui-même
+        // (casse, accents, pluriel) — et c'est déjà un doublon en moins.
+        let planned = [
+            PlannedIngredient::new("Farine de sarrasin", g(250.0)),
+            PlannedIngredient::new("farines de sarrasin", g(250.0)),
+        ];
+        let items = aggregate_purchases(&planned, &catalog());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "Farine de sarrasin", "premier nom rencontré");
+        assert_eq!(items[0].quantity, g(500.0));
     }
 
     #[test]

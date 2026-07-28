@@ -1,11 +1,15 @@
-//! Utilitaires de test partagés : un [`ShoppingListRepository`] en mémoire pour
-//! exercer les use cases sans base. Compilé uniquement pour les tests.
+//! Utilitaires de test partagés : un [`ShoppingListRepository`] et un
+//! [`ReferenceRepository`] en mémoire pour exercer les use cases sans base.
+//! Compilé uniquement pour les tests.
 
 use std::sync::Mutex;
 
 use kernel::{HouseholdId, RepositoryError, ShoppingItemId};
 
-use crate::domain::{ShoppingItem, ShoppingListRepository};
+use crate::domain::{
+    IngredientReference, ReferenceCatalog, ReferenceRepository, ShoppingItem,
+    ShoppingListRepository,
+};
 
 /// Repository en mémoire, scopé au foyer comme l'implémentation SQLx.
 ///
@@ -24,6 +28,29 @@ impl InMemoryShoppingList {
         Self {
             items: Mutex::new(items),
         }
+    }
+}
+
+/// Dictionnaire en mémoire, pour exercer le rapprochement des noms sans base.
+#[derive(Default)]
+pub struct InMemoryReferences {
+    catalog: ReferenceCatalog,
+}
+
+impl InMemoryReferences {
+    /// Dictionnaire pré-rempli.
+    #[must_use]
+    pub fn with(references: Vec<IngredientReference>) -> Self {
+        Self {
+            catalog: ReferenceCatalog::from_iter(references),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ReferenceRepository for InMemoryReferences {
+    async fn catalog(&self) -> Result<ReferenceCatalog, RepositoryError> {
+        Ok(self.catalog.clone())
     }
 }
 

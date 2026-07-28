@@ -2,12 +2,15 @@
 //! du domaine.
 //!
 //! - [`SqlxShoppingListRepository`] — la liste elle-même ;
-//! - [`SqlxReferenceRepository`] — le référentiel d'ingrédients (global) ;
+//! - [`SqlxReferenceRepository`] — le dictionnaire d'ingrédients (global) ;
 //! - [`SqlxPlannedIngredients`] — projection **en lecture seule** des
-//!   ingrédients planifiés, au travers du calendrier et des recettes.
+//!   ingrédients planifiés, au travers du calendrier et des recettes ;
+//! - [`seed`] — chargement du dictionnaire versionné (`data/ingredients.yaml`).
 //!
 //! Requêtes runtime (aucune macro vérifiée à la compilation) ; erreurs SQLx
 //! traduites en [`RepositoryError`].
+
+pub mod seed;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -29,7 +32,7 @@ fn backend(err: sqlx::Error) -> RepositoryError {
 }
 
 /// Interprète l'unité stockée (texte canonique du `kernel`).
-fn parse_unit(raw: &str) -> Result<Unit, RepositoryError> {
+pub(crate) fn parse_unit(raw: &str) -> Result<Unit, RepositoryError> {
     match raw {
         "g" => Ok(Unit::G),
         "kg" => Ok(Unit::Kg),
@@ -278,7 +281,12 @@ impl ShoppingListRepository for SqlxShoppingListRepository {
     }
 }
 
-// --- Référentiel ----------------------------------------------------------
+// --- Dictionnaire ---------------------------------------------------------
+
+/// Séparateur des synonymes en base : aucun nom d'ingrédient ne contient de
+/// barre verticale, une simple concaténation suffit donc (pas de JSON pour
+/// stocker trois mots).
+const ALIAS_SEPARATOR: char = '|';
 
 /// Implémentation SQLx du [`ReferenceRepository`].
 pub struct SqlxReferenceRepository {
@@ -292,11 +300,12 @@ impl SqlxReferenceRepository {
         Self { pool }
     }
 
-    /// Insère ou met à jour des références (seed depuis `data/ingredients.yaml`).
+    /// Insère ou met à jour des entrées du dictionnaire (seed depuis
+    /// `data/ingredients.yaml`).
     ///
-    /// Le nom est **normalisé** avant écriture : c'est la clé de rapprochement
-    /// du service de conversion. Upsert par nom ⇒ rejouer le seed est sans
-    /// effet de bord. Renvoie le nombre de références écrites.
+    /// Noms et synonymes sont **normalisés** avant écriture : ce sont les clés
+    /// de rapprochement. Upsert par nom ⇒ rejouer le seed est sans effet de
+    /// bord. Renvoie le nombre d'entrées écrites.
     ///
     /// # Errors
     /// [`RepositoryError::Backend`] sur panne technique.
@@ -308,18 +317,27 @@ impl SqlxReferenceRepository {
         let mut written = 0;
         for reference in references {
             sqlx::query(
-                "insert into ingredient_reference (name, category, avg_weight_g, countable) \
-                 values (?, ?, ?, ?) \
+                "insert into ingredient_reference \
+                   (name, category, avg_weight_g, countable, aliases, unit) \
+                 values (?, ?, ?, ?, ?, ?) \
                  on conflict (name) do update set \
                    category = excluded.category, \
                    avg_weight_g = excluded.avg_weight_g, \
                    countable = excluded.countable, \
+                   aliases = excluded.aliases, \
+                   unit = excluded.unit, \
                    updated_at = datetime('now')",
             )
             .bind(crate::domain::reference::normalize_name(&reference.name))
             .bind(&reference.category)
-            .bind(i32::try_from(reference.avg_weight_g).unwrap_or(i32::MAX))
+            .bind(
+                reference
+                    .avg_weight_g
+                    .map(|weight| i32::try_from(weight).unwrap_or(i32::MAX)),
+            )
             .bind(reference.countable)
+            .bind(join_aliases(&reference.aliases))
+            .bind(reference.unit.as_str())
             .execute(&mut *tx)
             .await
             .map_err(backend)?;
@@ -330,30 +348,63 @@ impl SqlxReferenceRepository {
     }
 }
 
+/// Sérialise les synonymes pour la colonne `aliases` (normalisés, vides
+/// écartés).
+fn join_aliases(aliases: &[String]) -> String {
+    aliases
+        .iter()
+        .map(|alias| crate::domain::reference::normalize_name(alias))
+        .filter(|alias| !alias.is_empty())
+        .collect::<Vec<_>>()
+        .join(&ALIAS_SEPARATOR.to_string())
+}
+
+/// Relit la colonne `aliases`.
+fn split_aliases(raw: &str) -> Vec<String> {
+    raw.split(ALIAS_SEPARATOR)
+        .map(str::trim)
+        .filter(|alias| !alias.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 #[async_trait::async_trait]
 impl ReferenceRepository for SqlxReferenceRepository {
     async fn catalog(&self) -> Result<ReferenceCatalog, RepositoryError> {
-        let rows =
-            sqlx::query("select name, category, avg_weight_g, countable from ingredient_reference")
-                .fetch_all(&self.pool)
-                .await
-                .map_err(backend)?;
+        // Ordre stable : le dictionnaire départage ses rapprochements par
+        // ordre d'insertion, une même base doit donc toujours résoudre
+        // pareil.
+        let rows = sqlx::query(
+            "select name, category, avg_weight_g, countable, aliases, unit \
+             from ingredient_reference order by name",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
 
         rows.iter()
             .map(|row| {
                 let name: String = row.try_get("name").map_err(backend)?;
                 let category: String = row.try_get("category").map_err(backend)?;
-                let avg_weight_g: i32 = row.try_get("avg_weight_g").map_err(backend)?;
+                let avg_weight_g: Option<i32> = row.try_get("avg_weight_g").map_err(backend)?;
                 let countable: bool = row.try_get("countable").map_err(backend)?;
-                let avg_weight_g = u32::try_from(avg_weight_g).map_err(|_| {
-                    RepositoryError::Backend(format!("negative avg_weight_g for {name}"))
-                })?;
-                Ok(IngredientReference::new(
+                let aliases: String = row.try_get("aliases").map_err(backend)?;
+                let unit: String = row.try_get("unit").map_err(backend)?;
+                let avg_weight_g = avg_weight_g
+                    .map(|weight| {
+                        u32::try_from(weight).map_err(|_| {
+                            RepositoryError::Backend(format!("negative avg_weight_g for {name}"))
+                        })
+                    })
+                    .transpose()?;
+                Ok(IngredientReference {
                     name,
                     category,
                     avg_weight_g,
                     countable,
-                ))
+                    aliases: split_aliases(&aliases),
+                    unit: parse_unit(&unit)?,
+                })
             })
             .collect::<Result<Vec<_>, RepositoryError>>()
             .map(ReferenceCatalog::from_iter)

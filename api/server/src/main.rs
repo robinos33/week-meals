@@ -24,6 +24,10 @@ async fn main() {
     let session_store = server::init_session_store(&pool)
         .await
         .expect("migration du store de sessions");
+    // Le dictionnaire d'ingrédients suit le code : on le rejoue à chaque
+    // démarrage plutôt que de compter sur un `weekmeals seed-ingredients`
+    // lancé à la main après déploiement.
+    server::seed_ingredient_dictionary(&pool).await;
     let config = server::Config::from_env();
 
     let port = std::env::var("PORT")

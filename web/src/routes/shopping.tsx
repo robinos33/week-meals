@@ -1,9 +1,11 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -16,15 +18,18 @@ import {
   useClearChecked,
   useDeleteItem,
   sameCombo,
+  useIngredientDictionary,
   useReorderItems,
   useShoppingList,
   useShoppingSync,
   useUpdateItem,
+  type DictionaryEntry,
   type ShoppingItem,
   type SyncState,
   type Unit,
 } from "../api/shopping-list";
 import { foodEmoji } from "../lib/food-emoji";
+import { canonicalKey, rankMatches } from "../lib/ingredient-match";
 import { parseAmount } from "../lib/quantity";
 import "./screens.css";
 
@@ -276,8 +281,223 @@ function QuantityStepper({
   );
 }
 
+/** Libellé lisible d'un rayon du dictionnaire. */
+const CATEGORY_LABELS: Record<string, string> = {
+  legumes: "Légumes",
+  fruits: "Fruits",
+  cremerie: "Crèmerie",
+  boucherie: "Boucherie",
+  poissonnerie: "Poissonnerie",
+  epicerie: "Épicerie",
+  boulangerie: "Boulangerie",
+  surgeles: "Surgelés",
+  boissons: "Boissons",
+  entretien: "Entretien",
+};
+
+/** Nombre de suggestions affichées : au-delà, la liste masque l'écran. */
+const MAX_SUGGESTIONS = 6;
+
+/** Une proposition d'auto-complétion, venue de la liste ou du dictionnaire. */
+interface Suggestion {
+  /** Libellé affiché et inséré dans le champ. */
+  name: string;
+  /** Synonymes reconnus à la frappe (dictionnaire). */
+  aliases?: string[];
+  /** Unité présélectionnée à la sélection. */
+  unit: Unit;
+  /** Rayon, pour les entrées du dictionnaire. */
+  category?: string;
+  /** Ligne déjà dans la liste : la quantité s'y cumulera. */
+  existing?: ShoppingItem;
+}
+
+/**
+ * Candidats à l'auto-complétion : la liste courante d'abord, puis le
+ * dictionnaire dont on retire ce qui y figure déjà (sinon « courgette »
+ * apparaîtrait deux fois).
+ *
+ * `excludeId` écarte la ligne en cours d'édition : se proposer soi-même n'aide
+ * pas, et la mention « sera cumulé » y serait fausse.
+ */
+function useSuggestionCandidates(excludeId?: string): Suggestion[] {
+  const list = useShoppingList();
+  const dictionary = useIngredientDictionary();
+
+  return useMemo<Suggestion[]>(() => {
+    const fromList: Suggestion[] = (list.data ?? [])
+      .filter((item) => item.id !== excludeId)
+      .map((item) => ({ name: item.name, unit: item.unit, existing: item }));
+    const listed = new Set(fromList.map((suggestion) => canonicalKey(suggestion.name)));
+    const fromDictionary = (dictionary.data ?? [])
+      .filter((entry: DictionaryEntry) => !listed.has(canonicalKey(entry.name)))
+      .map((entry: DictionaryEntry) => ({
+        name: entry.name,
+        aliases: entry.aliases,
+        unit: entry.unit,
+        category: entry.category,
+      }));
+    return [...fromList, ...fromDictionary];
+  }, [list.data, dictionary.data, excludeId]);
+}
+
+/**
+ * Champ de nom d'ingrédient auto-complété (combobox), partagé par l'ajout
+ * rapide et l'édition d'une ligne.
+ *
+ * Deux sources de suggestions : les articles **déjà dans la liste** — c'est là
+ * que la quantité se cumulera, on les fait donc passer devant — puis le
+ * dictionnaire d'ingrédients de l'API. Le rapprochement tolère casse, accents,
+ * pluriels, qualificatifs et fautes de frappe (cf. `lib/ingredient-match`),
+ * avec les mêmes règles que le serveur : la ligne proposée est bien celle sur
+ * laquelle la saisie atterrira.
+ *
+ * La liste ne s'ouvre qu'à la frappe (ou sur ↓), jamais à la simple prise de
+ * focus : à l'édition, le champ est déjà rempli et se proposerait des
+ * suggestions avant qu'on ait rien demandé.
+ */
+function IngredientInput({
+  value,
+  onChange,
+  onPick,
+  excludeId,
+  className = "input",
+  placeholder,
+  ariaLabel,
+  autoFocus = false,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  /** Suggestion retenue : nom canonique **et** unité d'achat. */
+  onPick: (suggestion: Suggestion) => void;
+  excludeId?: string;
+  className?: string;
+  placeholder?: string;
+  ariaLabel: string;
+  autoFocus?: boolean;
+}) {
+  const candidates = useSuggestionCandidates(excludeId);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Identifiants ARIA propres à l'instance : deux combobox peuvent coexister
+  // (ajout rapide + ligne en édition).
+  const listId = useId();
+  // Suggestion mise en avant au clavier (-1 = aucune, la saisie fait foi).
+  const [highlight, setHighlight] = useState(-1);
+  const [open, setOpen] = useState(false);
+
+  const suggestions = useMemo(
+    // Le bonus fait remonter les articles de la liste à pertinence comparable.
+    () =>
+      rankMatches(value, candidates, (candidate) => (candidate.existing ? 0.3 : 0)).slice(
+        0,
+        MAX_SUGGESTIONS,
+      ),
+    [value, candidates],
+  );
+
+  const showSuggestions = open && suggestions.length > 0;
+
+  function close() {
+    setOpen(false);
+    setHighlight(-1);
+  }
+
+  /** Reprend une suggestion : nom et unité, prêt à valider. */
+  function choose(suggestion: Suggestion) {
+    onPick(suggestion);
+    close();
+    inputRef.current?.focus();
+  }
+
+  /** Navigation clavier dans la liste (le tactile passe par le tap). */
+  function onKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      close();
+      return;
+    }
+    if (!showSuggestions) {
+      // ↓ rouvre une liste refermée sans avoir à retaper.
+      if (event.key === "ArrowDown" && suggestions.length > 0) setOpen(true);
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlight((current) => (current + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlight((current) => (current <= 0 ? suggestions.length - 1 : current - 1));
+    } else if (event.key === "Enter" && highlight >= 0) {
+      // Entrée valide la suggestion mise en avant plutôt que le formulaire.
+      event.preventDefault();
+      choose(suggestions[highlight]);
+    }
+  }
+
+  return (
+    <div className="combo">
+      <input
+        ref={inputRef}
+        className={className}
+        placeholder={placeholder}
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => {
+          onChange(event.target.value);
+          setHighlight(-1);
+          setOpen(true);
+        }}
+        onKeyDown={onKeyDown}
+        onBlur={close}
+        role="combobox"
+        aria-expanded={showSuggestions}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={highlight >= 0 ? `${listId}-${highlight}` : undefined}
+        autoComplete="off"
+        autoFocus={autoFocus}
+      />
+      {showSuggestions && (
+        <ul className="suggestions" id={listId} role="listbox">
+          {suggestions.map((suggestion, index) => (
+            <li key={`${suggestion.existing?.id ?? "dict"}-${suggestion.name}`}>
+              <button
+                type="button"
+                id={`${listId}-${index}`}
+                className="suggestions__option"
+                role="option"
+                aria-selected={index === highlight}
+                data-highlighted={index === highlight}
+                // Le clic doit gagner contre le `blur` du champ, qui referme
+                // la liste : on choisit dès l'appui, sans laisser le focus.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(suggestion)}
+              >
+                <span className="suggestions__emoji" aria-hidden="true">
+                  {foodEmoji(suggestion.name) ?? "•"}
+                </span>
+                <span className="suggestions__name">{suggestion.name}</span>
+                <span className="suggestions__hint">
+                  {suggestion.existing
+                    ? `déjà ${formatQuantity(suggestion.existing)}${
+                        suggestion.existing.checked ? " (coché)" : " — sera cumulé"
+                      }`
+                    : (CATEGORY_LABELS[suggestion.category ?? ""] ?? "")}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /**
  * Champ d'ajout rapide, toujours accessible en haut de l'écran.
+ *
+ * Le nom est auto-complété (cf. [`IngredientInput`]) sur la liste courante et
+ * le dictionnaire : l'article déjà présent se retrouve en une frappe, et c'est
+ * sur lui que la quantité se cumulera.
  *
  * Un ingrédient déjà présent (non coché) n'est jamais dupliqué : l'API cumule
  * la quantité sur la ligne existante (« courgette 3 » + « courgette 2 » →
@@ -337,13 +557,19 @@ function QuickAdd({
 
   return (
     <form className="quick-add" onSubmit={submit}>
-      <input
-        className="input quick-add__name"
-        placeholder="Ajouter un article…"
-        aria-label="Nom de l'article"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-      />
+      <div className="quick-add__field">
+        <IngredientInput
+          className="input quick-add__name"
+          placeholder="Ajouter un article…"
+          ariaLabel="Nom de l'article"
+          value={name}
+          onChange={setName}
+          onPick={(suggestion) => {
+            setName(suggestion.name);
+            setUnit(suggestion.unit);
+          }}
+        />
+      </div>
       <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
       <select
         className="input input--unit"
@@ -444,7 +670,13 @@ function ShoppingRow({
   );
 }
 
-/** Édition inline d'une ligne : nom, quantité, unité. */
+/**
+ * Édition inline d'une ligne : nom, quantité, unité.
+ *
+ * Le nom est auto-complété comme à l'ajout — corriger « courgetes » en
+ * « courgette » ne devrait pas demander de le réécrire —, la ligne en cours
+ * d'édition étant écartée de ses propres suggestions.
+ */
 function InlineEdit({
   item,
   onSave,
@@ -467,11 +699,16 @@ function InlineEdit({
 
   return (
     <form className="inline-edit" onSubmit={save}>
-      <input
-        className="input"
-        aria-label="Nom"
+      <IngredientInput
+        className="input inline-edit__name"
+        ariaLabel="Nom"
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={setName}
+        onPick={(suggestion) => {
+          setName(suggestion.name);
+          setUnit(suggestion.unit);
+        }}
+        excludeId={item.id}
         autoFocus
       />
       <QuantityStepper value={amount} unit={unit} onChange={setAmount} />
