@@ -168,7 +168,14 @@ ingredients:
     category: legumes
     avg_weight_g: 350
     countable: true
-    aliases: [laitue, batavia, sucrine, salade verte]
+    aliases: [laitue, batavia, sucrine, salade verte, cœur de salade]
+  # Une variété nomme une course à part : on ne remplace pas une feuille de
+  # chêne par une batavia. D'où son entrée, plutôt qu'un synonyme de « salade ».
+  - name: feuille de chêne
+    category: legumes
+    avg_weight_g: 300
+    countable: true
+    aliases: [salade feuille de chêne, cœur de salade feuille de chêne]
   - name: épinard
     category: legumes
     unit: g
@@ -364,6 +371,15 @@ ingredients:
   - name: chorizo
     category: charcuterie
     unit: g
+  - name: coppa
+    category: charcuterie
+    unit: g
+  # Le traiteur frais partage l'allée de la charcuterie : houmous, tzatziki et
+  # autres tartinables se prennent au même arrêt.
+  - name: houmous
+    category: charcuterie
+    unit: g
+    aliases: [hummus, houmous de pois chiche]
 
   # ------------------------------------------------------------ Poissonnerie
   - name: saumon
@@ -388,6 +404,10 @@ ingredients:
   - name: moule
     category: poissonnerie
     unit: g
+  - name: limande
+    category: poissonnerie
+    unit: g
+    aliases: [filet de limande, limande sole]
 
   # ----------------------------------------------------------------- Crèmerie
   - name: œuf
@@ -414,7 +434,10 @@ ingredients:
   - name: fromage râpé
     category: cremerie
     unit: g
-    aliases: [gruyère râpé, emmental râpé]
+    aliases: [gruyère râpé, emmental râpé, râpé]
+  - name: fromage blanc
+    category: cremerie
+    unit: g
   - name: parmesan
     category: cremerie
     unit: g
@@ -444,6 +467,17 @@ ingredients:
     category: cremerie
     avg_weight_g: 230
     countable: true
+  - name: pâte à pizza
+    category: cremerie
+    avg_weight_g: 260
+    countable: true
+    aliases: [pâte à pizza rectangulaire, pâte à pizza ronde]
+  # Les galettes de sarrasin sont au frais, à côté des crêpes.
+  - name: galette de sarrasin
+    category: cremerie
+    avg_weight_g: 55
+    countable: true
+    aliases: [galette bretonne, galette de blé noir, crêpe de sarrasin]
 
   # ----------------------------------------------------------------- Surgelés
   - name: légumes surgelés
@@ -513,6 +547,11 @@ ingredients:
     unit: g
     aliases: [tomates concassées, pulpe de tomate, coulis de tomate]
   - name: concentré de tomate
+    category: epicerie-salee
+    unit: g
+  # Une sauce cuisinée n'est ni un coulis ni une boîte de pelées : c'est un
+  # autre bocal, donc une autre ligne.
+  - name: sauce tomate
     category: epicerie-salee
     unit: g
   - name: bouillon

@@ -37,6 +37,7 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["noix de coco", "🥥"],
   ["coco", "🥥"],
   ["citron vert", "🍋"],
+  ["creme glacee", "🍦"],
 
   // Fruits.
   ["pomme", "🍎"],
@@ -72,6 +73,7 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["courgette", "🥒"],
   ["salade", "🥬"],
   ["laitue", "🥬"],
+  ["feuille de chene", "🥬"],
   ["epinard", "🥬"],
   ["brocoli", "🥦"],
   ["poireau", "🥬"],
@@ -83,6 +85,7 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["haricot", "🫘"],
   ["lentille", "🫘"],
   ["pois chiche", "🫘"],
+  ["houmous", "🫘"],
   ["petit pois", "🫛"],
   ["pois", "🫛"],
   ["gingembre", "🫚"],
@@ -96,6 +99,14 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["pates", "🍝"],
   ["spaghetti", "🍝"],
   ["farine", "🌾"],
+  ["galette", "🥞"],
+  ["crepe", "🥞"],
+  // Les pâtes à dérouler : « pâte » seul reste sans emoji, il désigne trop de
+  // choses (à pizza → 🍕 plus bas, à tartiner, à modeler…).
+  ["pate feuilletee", "🥧"],
+  ["pate brisee", "🥧"],
+  ["pate sablee", "🥧"],
+  ["pate a tarte", "🥧"],
 
   // Protéines.
   ["oeuf", "🥚"],
@@ -108,10 +119,15 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["lard", "🥓"],
   ["bacon", "🥓"],
   ["jambon", "🍖"],
+  ["coppa", "🍖"],
+  ["saucisson", "🍖"],
+  ["chorizo", "🍖"],
   ["saucisse", "🌭"],
   ["poisson", "🐟"],
   ["saumon", "🐟"],
   ["thon", "🐟"],
+  ["cabillaud", "🐟"],
+  ["limande", "🐟"],
   ["crevette", "🦐"],
   ["crabe", "🦀"],
   ["homard", "🦞"],
@@ -120,8 +136,16 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
 
   // Produits laitiers.
   ["lait", "🥛"],
+  ["creme", "🥛"],
   ["fromage", "🧀"],
+  ["feta", "🧀"],
+  ["mozzarella", "🧀"],
+  ["parmesan", "🧀"],
+  ["ricotta", "🧀"],
+  ["chevre", "🧀"],
+  ["comte", "🧀"],
   ["beurre", "🧈"],
+  ["yaourt", "🥣"],
 
   // Sucré & divers.
   ["miel", "🍯"],
