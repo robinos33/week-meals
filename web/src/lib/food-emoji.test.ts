@@ -36,8 +36,28 @@ describe("foodEmoji", () => {
   });
 
   it("ne confond pas la pâte à tarte avec les pâtes", () => {
-    expect(foodEmoji("pâte brisée")).toBeNull();
+    expect(foodEmoji("pâte brisée")).toBe("🥧");
+    expect(foodEmoji("pâte feuilletée")).toBe("🥧");
     expect(foodEmoji("pâtes")).toBe("🍝");
+    // « pâte » seul ne dit pas de quoi il s'agit : pas d'emoji au hasard.
+    expect(foodEmoji("pâte à tartiner")).toBeNull();
+  });
+
+  it("donne un repère aux fromages et au frais", () => {
+    expect(foodEmoji("feta")).toBe("🧀");
+    expect(foodEmoji("mozzarella")).toBe("🧀");
+    expect(foodEmoji("fromage blanc")).toBe("🧀");
+    expect(foodEmoji("crème fraîche")).toBe("🥛");
+    // La crème glacée reste une glace, pas de la crème.
+    expect(foodEmoji("crème glacée")).toBe("🍦");
+  });
+
+  it("reconnaît les produits vus en liste réelle", () => {
+    expect(foodEmoji("galette bretonne")).toBe("🥞");
+    expect(foodEmoji("houmous")).toBe("🫘");
+    expect(foodEmoji("coppa")).toBe("🍖");
+    expect(foodEmoji("limande")).toBe("🐟");
+    expect(foodEmoji("pâte à pizza rectangulaire")).toBe("🍕");
   });
 
   it("gère un nom avec quantité et complément", () => {

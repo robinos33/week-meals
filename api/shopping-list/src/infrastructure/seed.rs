@@ -210,6 +210,54 @@ ingredients:
     }
 
     #[test]
+    fn the_versioned_dictionary_catches_the_formulations_of_real_lists() {
+        // Relevé sur une liste de courses réelle : ces formulations finissaient
+        // en « Autres », faute d'entrée ou de synonyme. Elles doivent tomber sur
+        // le bon produit — c'est ce qui leur donne leur rayon.
+        let catalog = crate::domain::ReferenceCatalog::from_iter(versioned_dictionary());
+        for (written, expected) in [
+            ("Râpé", "fromage râpé"),
+            ("Fromage blanc", "fromage blanc"),
+            ("pâte pizza rectangulaire", "pâte à pizza"),
+            ("Galette bretonne", "galette de sarrasin"),
+            ("coeur de salade (feuille de chêne)", "feuille de chêne"),
+            ("Houmous", "houmous"),
+            ("Coppa", "coppa"),
+            ("Sauce tomate", "sauce tomate"),
+            ("Limande", "limande"),
+        ] {
+            let resolved = catalog
+                .resolve(written)
+                .unwrap_or_else(|| panic!("« {written} » n'est rapproché de rien"));
+            assert_eq!(
+                resolved.name, expected,
+                "« {written} » rapproché de « {} »",
+                resolved.name
+            );
+        }
+    }
+
+    #[test]
+    fn the_versioned_dictionary_keeps_neighbouring_products_apart() {
+        // Les entrées ajoutées pour la liste ci-dessus voisinent avec des
+        // produits qu'elles ne doivent pas absorber : une sauce cuisinée n'est
+        // pas un coulis, une pâte à pizza n'est pas des pâtes.
+        let catalog = crate::domain::ReferenceCatalog::from_iter(versioned_dictionary());
+        for (written, expected) in [
+            ("coulis de tomate", "tomate pelée"),
+            ("pâtes", "pâtes"),
+            ("pâte feuilletée", "pâte feuilletée"),
+            ("salade", "salade"),
+            ("fromage râpé", "fromage râpé"),
+        ] {
+            assert_eq!(
+                catalog.resolve(written).map(|found| found.name.as_str()),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
     fn rejects_a_malformed_file() {
         assert!(matches!(
             parse_references("ingredients: 12"),
