@@ -37,8 +37,9 @@
 //! - La légende est le seul texte disponible : une recette qui vit uniquement
 //!   dans la vidéo ou dans les commentaires ne sera pas importée.
 //! - La photo pointe le CDN Instagram, dont les URLs sont signées et
-//!   **expirent** : le brouillon la propose, à remplacer par un upload si on
-//!   veut la garder.
+//!   **expirent**. Elle n'est donc pas gardée telle quelle : le use case
+//!   d'import la télécharge et la range dans le stockage photo (cf.
+//!   [`crate::application::scrape`]).
 //! - Instagram peut refuser de servir la page à un serveur (mur de connexion) ;
 //!   l'import ressort alors en « page injoignable ».
 
@@ -128,7 +129,8 @@ const CDN_HOSTS: &[&str] = &["cdninstagram.com", "fbcdn.net"];
 /// n'importe quelle image servie par le CDN Instagram.
 ///
 /// Les URLs du CDN sont **signées et datées** : celle-ci finira par expirer.
-/// C'est une photo de brouillon, à remplacer par un upload pour la garder.
+/// C'est une adresse de travail — le use case d'import télécharge l'image
+/// derrière et la range dans le stockage photo.
 fn photo(html: &str) -> Option<String> {
     og_content(html, "og:image")
         .or_else(|| media_image(html))

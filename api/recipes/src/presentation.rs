@@ -41,7 +41,8 @@ use crate::application::queries::{
 use crate::application::scrape::{ScrapeRecipeCommand, ScrapeRecipeHandler, ScrapeRecipeResponse};
 use crate::application::IngredientInput;
 use crate::domain::{
-    PhotoError, PhotoStorage, Recipe, RecipeRepository, RecipeScraper, ScrapeError, ScrapedRecipe,
+    ImageFetcher, PhotoError, PhotoStorage, Recipe, RecipeRepository, RecipeScraper, ScrapeError,
+    ScrapedRecipe,
 };
 use crate::infrastructure::VolumePhotoStorage;
 
@@ -59,6 +60,10 @@ pub struct RecipeState {
     pub local_photos: Option<Arc<VolumePhotoStorage>>,
     /// Scraper d'import par URL (#61). Garde SSRF côté implémentation.
     pub scraper: Arc<dyn RecipeScraper>,
+    /// Récupérateur d'images, pour rapatrier la photo d'une recette importée
+    /// dans `photos` plutôt que d'en garder l'URL distante (qui expire, côté
+    /// Instagram). `None` : le brouillon garde l'URL du site.
+    pub images: Option<Arc<dyn ImageFetcher>>,
 }
 
 /// Sous-router des recettes, monté par le `server`.
@@ -489,15 +494,22 @@ fn scrape_status(error: &ScrapeError) -> StatusCode {
 ///
 /// Le serveur va chercher l'URL : garde SSRF côté implémentation (https,
 /// IP publiques, sans redirection, taille bornée). Ne crée jamais la recette —
-/// il renvoie un brouillon que le front prérempli dans le formulaire.
+/// il renvoie un brouillon que le front prérempli dans le formulaire. Seule la
+/// photo est rapatriée dans le stockage au passage (quand il est configuré),
+/// pour que la recette ne dépende pas d'une URL distante qui expire.
 async fn scrape_recipe(
     _user: AuthUser,
     State(state): State<RecipeState>,
     Json(body): Json<ScrapeBody>,
 ) -> impl IntoResponse {
-    let response = ScrapeRecipeHandler::new(state.scraper.as_ref())
-        .handle(ScrapeRecipeCommand { url: body.url })
-        .await;
+    let handler = ScrapeRecipeHandler::new(state.scraper.as_ref());
+    // Rapatriement seulement si les deux morceaux sont là : de quoi télécharger
+    // l'image, et où la ranger.
+    let handler = match (state.images.as_ref(), state.photos.as_ref()) {
+        (Some(images), Some(photos)) => handler.with_photo_import(images.as_ref(), photos.as_ref()),
+        _ => handler,
+    };
+    let response = handler.handle(ScrapeRecipeCommand { url: body.url }).await;
     match response {
         ScrapeRecipeResponse::Drafted(recipe) => {
             (StatusCode::OK, Json(RecipeDraftView::from(recipe))).into_response()
@@ -536,6 +548,7 @@ mod tests {
             photos: None,
             local_photos: None,
             scraper: Arc::new(NoopScraper),
+            images: None,
         };
         let _ = router(state);
     }

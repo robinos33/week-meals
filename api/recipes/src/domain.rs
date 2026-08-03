@@ -235,6 +235,47 @@ pub trait PhotoStorage: Send + Sync {
     ///   prise en charge ;
     /// - [`PhotoError::Backend`] si la présignature échoue.
     async fn presign_upload(&self, content_type: &str) -> Result<PhotoUpload, PhotoError>;
+
+    /// Range des octets d'image déjà en main et renvoie l'URL publique à
+    /// persister dans la recette.
+    ///
+    /// Complète [`Self::presign_upload`] pour le cas où ce n'est pas un client
+    /// qui dépose le fichier mais **le serveur lui-même** : à l'import par URL,
+    /// la photo est rapatriée depuis le site d'origine (cf.
+    /// [`crate::application::scrape`]) — une URL distante finirait par pointer
+    /// dans le vide, celle du CDN Instagram étant même signée et datée.
+    ///
+    /// # Errors
+    /// - [`PhotoError::UnsupportedType`] si le type MIME n'est pas une image
+    ///   prise en charge ;
+    /// - [`PhotoError::Backend`] si l'écriture échoue.
+    async fn store_bytes(&self, bytes: &[u8], content_type: &str) -> Result<String, PhotoError>;
+}
+
+/// Une image récupérée sur le web, prête à être rangée dans le stockage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedImage {
+    /// Octets du fichier.
+    pub bytes: Vec<u8>,
+    /// Type MIME annoncé par le serveur distant.
+    pub content_type: String,
+}
+
+/// Port de récupération d'une image distante, pour rapatrier la photo d'une
+/// recette importée.
+///
+/// Séparé de [`RecipeScraper`] parce que c'est un autre besoin (des octets, pas
+/// une recette), mais implémenté par le même objet : l'URL vient d'une page
+/// scrapée, donc d'une source non fiable, et la récupération doit passer par la
+/// **même garde SSRF** que le scraping.
+#[async_trait::async_trait]
+pub trait ImageFetcher: Send + Sync {
+    /// Récupère l'image à `url`.
+    ///
+    /// # Errors
+    /// Voir [`ScrapeError`] : URL invalide ou non https, cible interdite, image
+    /// injoignable ou trop volumineuse.
+    async fn fetch_image(&self, url: &str) -> Result<FetchedImage, ScrapeError>;
 }
 
 /// Port de persistance des recettes. Implémenté dans la couche infrastructure
@@ -351,6 +392,11 @@ pub enum ScrapeError {
     /// Aucune recette JSON-LD (schema.org) sur la page.
     #[error("aucune recette n'a été trouvée sur cette page")]
     NoRecipe,
+    /// Le contenu récupéré n'est pas une image exploitable. Concerne le
+    /// rapatriement de la photo ([`ImageFetcher`]), pas la recette elle-même :
+    /// l'import se poursuit avec l'URL distante.
+    #[error("le fichier récupéré n'est pas une image")]
+    NotAnImage,
 }
 
 /// Port d'import d'une recette depuis une URL. L'implémentation vit dans

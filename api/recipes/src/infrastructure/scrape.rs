@@ -33,7 +33,9 @@ use reqwest::redirect::Policy;
 use reqwest::Url;
 use serde_json::Value;
 
-use crate::domain::{RecipeScraper, ScrapeError, ScrapedIngredient, ScrapedRecipe};
+use crate::domain::{
+    FetchedImage, ImageFetcher, RecipeScraper, ScrapeError, ScrapedIngredient, ScrapedRecipe,
+};
 
 pub mod instagram;
 
@@ -81,6 +83,14 @@ impl HttpRecipeScraper {
 
     /// Récupère la page et renvoie son HTML (décodé, borné en taille).
     async fn fetch(&self, url: &str) -> Result<String, ScrapeError> {
+        let response = self.send(url, MAX_BYTES).await?;
+        let bytes = read_capped(response, MAX_BYTES).await?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    /// Envoie la requête sous la politique d'accès en vigueur et rend la
+    /// réponse, en refusant d'emblée un corps annoncé au-delà de `max_bytes`.
+    async fn send(&self, url: &str, max_bytes: usize) -> Result<reqwest::Response, ScrapeError> {
         let parsed = Url::parse(url).map_err(|_| ScrapeError::InvalidUrl)?;
         let client = match self.access {
             Access::Guarded => guarded_client(&parsed).await?,
@@ -106,12 +116,50 @@ impl HttpRecipeScraper {
         // ment ou manque.
         if response
             .content_length()
-            .is_some_and(|len| len > MAX_BYTES as u64)
+            .is_some_and(|len| len > max_bytes as u64)
         {
             return Err(ScrapeError::TooLarge);
         }
-        read_capped(response).await
+        Ok(response)
     }
+}
+
+/// Taille maximale d'une photo rapatriée. Alignée sur le plafond du dépôt
+/// client (`PUT /recipes/photos/{filename}`) : ce qui entre par l'import ne doit
+/// pas peser plus que ce qui entre par l'upload.
+const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
+
+#[async_trait::async_trait]
+impl ImageFetcher for HttpRecipeScraper {
+    async fn fetch_image(&self, url: &str) -> Result<FetchedImage, ScrapeError> {
+        let response = self.send(url, MAX_IMAGE_BYTES).await?;
+        let bytes = read_capped(response, MAX_IMAGE_BYTES).await?;
+        // Le type est déduit des octets, jamais de l'en-tête distant : une page
+        // d'erreur servie en `image/jpeg` ne doit pas finir rangée comme photo.
+        let content_type = sniff_image_type(&bytes)
+            .ok_or(ScrapeError::NotAnImage)?
+            .to_owned();
+        Ok(FetchedImage {
+            bytes,
+            content_type,
+        })
+    }
+}
+
+/// Type MIME déduit des premiers octets, pour les formats que le stockage
+/// accepte (cf. [`photo_extension`](crate::domain::photo_extension)). `None`
+/// si ce n'est pas une image reconnue.
+fn sniff_image_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("image/png");
+    }
+    if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        return Some("image/webp");
+    }
+    None
 }
 
 #[async_trait::async_trait]
@@ -176,19 +224,22 @@ async fn resolve_public(host: &str, port: u16) -> Result<SocketAddr, ScrapeError
 
 /// Lit le corps en bornant la taille (défense si `Content-Length` ment ou
 /// manque, notamment après décompression gzip).
-async fn read_capped(mut response: reqwest::Response) -> Result<String, ScrapeError> {
+async fn read_capped(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, ScrapeError> {
     let mut buf: Vec<u8> = Vec::new();
     while let Some(chunk) = response
         .chunk()
         .await
         .map_err(|_| ScrapeError::Unreachable)?
     {
-        if buf.len() + chunk.len() > MAX_BYTES {
+        if buf.len() + chunk.len() > max_bytes {
             return Err(ScrapeError::TooLarge);
         }
         buf.extend_from_slice(&chunk);
     }
-    Ok(String::from_utf8_lossy(&buf).into_owned())
+    Ok(buf)
 }
 
 // --- Garde SSRF : classification des IP -----------------------------------
@@ -712,6 +763,35 @@ mod tests {
     fn survives_an_invalid_json_ld_block() {
         let page = format!(r#"<script type="application/ld+json">{{ oops </script>{PAGE}"#);
         assert!(parse_recipe(&page).is_some());
+    }
+
+    // --- Reconnaissance d'une image ---------------------------------------
+
+    #[test]
+    fn sniffs_the_supported_image_types() {
+        assert_eq!(
+            sniff_image_type(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("image/jpeg")
+        );
+        assert_eq!(
+            sniff_image_type(b"\x89PNG\r\n\x1a\ndes octets"),
+            Some("image/png")
+        );
+        assert_eq!(
+            sniff_image_type(b"RIFF\0\0\0\0WEBPVP8 "),
+            Some("image/webp")
+        );
+    }
+
+    #[test]
+    fn refuses_what_is_not_an_image() {
+        // Le type est déduit des octets, pas de l'en-tête : une page de
+        // connexion servie en `image/jpeg` ne doit pas finir en photo.
+        assert_eq!(sniff_image_type(b"<html><body>Connectez-vous"), None);
+        assert_eq!(sniff_image_type(b"GIF89a"), None);
+        assert_eq!(sniff_image_type(b""), None);
+        // `RIFF` sans marqueur `WEBP` : un fichier audio wav, par exemple.
+        assert_eq!(sniff_image_type(b"RIFF\0\0\0\0WAVEfmt "), None);
     }
 
     // --- Garde SSRF -------------------------------------------------------

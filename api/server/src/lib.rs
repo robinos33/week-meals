@@ -264,12 +264,16 @@ pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Rou
         household_id: HouseholdId::from(DEMO_HOUSEHOLD_ID),
     };
     let (photos, local_photos) = photo_storage_from_env();
+    // Import par URL (#61) : garde SSRF, c'est le serveur qui fetch. Le même
+    // objet sert les deux ports — la photo rapatriée vient d'une page scrapée,
+    // elle doit passer par la même garde que la page elle-même.
+    let scraper = Arc::new(HttpRecipeScraper::guarded());
     let recipe_state = RecipeState {
         recipes: Arc::new(SqlxRecipeRepository::new(pool.clone())),
         photos,
         local_photos,
-        // Import par URL (#61) : garde SSRF, c'est le serveur qui fetch.
-        scraper: Arc::new(HttpRecipeScraper::guarded()),
+        images: Some(scraper.clone()),
+        scraper,
     };
     let meal_plan_state = MealPlanState {
         plan: Arc::new(SqlxMealPlanRepository::new(pool.clone())),
