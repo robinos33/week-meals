@@ -1143,6 +1143,7 @@
 }
 
 .recipe-detail__photo {
+  position: relative;
   aspect-ratio: 16 / 10;
   background: var(--color-surface-2);
   border-radius: var(--radius-lg);
@@ -1153,7 +1154,15 @@
   margin-bottom: 1rem;
 }
 
+/*
+ * Photo sortie du flux (comme la grille, #70) : en `width/height: 100%` dans le
+ * flux, sa hauteur intrinsèque prend le dessus sur l'`aspect-ratio: 16 / 10` et
+ * neutralise `object-position` (le recadrage retombe alors sur le haut de
+ * l'image). En absolu, la boîte garde son ratio et le point de mire s'applique.
+ */
 .recipe-detail__photo img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
