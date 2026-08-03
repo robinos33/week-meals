@@ -483,6 +483,27 @@ impl PhotoStorage for R2PhotoStorage {
             public_url: format!("{}/{key}", self.public_base_url),
         })
     }
+
+    async fn store_bytes(&self, bytes: &[u8], content_type: &str) -> Result<String, PhotoError> {
+        let extension = photo_extension(content_type)
+            .ok_or_else(|| PhotoError::UnsupportedType(content_type.to_owned()))?;
+        let key = format!("recipes/{}.{extension}", uuid::Uuid::new_v4());
+        // Dépôt direct (pas de présignature) : les octets sont déjà côté
+        // serveur, les faire transiter par une URL présignée n'ajouterait qu'un
+        // aller-retour.
+        let response = self
+            .bucket
+            .put_object_with_content_type(format!("/{key}"), bytes, content_type)
+            .await
+            .map_err(|e| PhotoError::Backend(e.to_string()))?;
+        if response.status_code() >= 300 {
+            return Err(PhotoError::Backend(format!(
+                "dépôt refusé par le stockage ({})",
+                response.status_code()
+            )));
+        }
+        Ok(format!("{}/{key}", self.public_base_url))
+    }
 }
 
 // --- Stockage des photos sur le volume Fly (cf. ADR-0009) -------------------
@@ -602,6 +623,18 @@ impl PhotoStorage for VolumePhotoStorage {
             public_url: format!("{}/{filename}", self.url_base),
         })
     }
+
+    async fn store_bytes(&self, bytes: &[u8], content_type: &str) -> Result<String, PhotoError> {
+        let extension = photo_extension(content_type)
+            .ok_or_else(|| PhotoError::UnsupportedType(content_type.to_owned()))?;
+        let filename = format!("{}.{extension}", Uuid::new_v4());
+        // Écriture directe : pas de jeton à émettre puisque personne ne dépose
+        // le fichier de l'extérieur — c'est l'API qui l'a déjà en main.
+        tokio::fs::write(self.dir.join(&filename), bytes)
+            .await
+            .map_err(|e| PhotoError::Backend(e.to_string()))?;
+        Ok(format!("{}/{filename}", self.url_base))
+    }
 }
 
 /// Type MIME servi pour un nom `<uuid v4>.<ext>`. `None` si le format ne colle
@@ -651,6 +684,34 @@ mod volume_photo_tests {
         let (content_type, bytes) = store.load(filename).await.expect("lecture");
         assert_eq!(content_type, "image/png");
         assert_eq!(bytes, b"des octets png");
+    }
+
+    #[tokio::test]
+    async fn store_bytes_ecrit_sans_jeton_et_se_relit() {
+        // Rapatriement d'une photo importée : c'est l'API qui a les octets, il
+        // n'y a pas de dépôt client à autoriser.
+        let store = storage();
+        let url = store
+            .store_bytes(b"des octets jpeg", "image/jpeg")
+            .await
+            .expect("dépôt direct");
+
+        assert!(url.starts_with("/api/recipes/photos/"));
+        assert!(url.ends_with(".jpg"));
+        let filename = url.rsplit('/').next().unwrap();
+        let (content_type, bytes) = store.load(filename).await.expect("lecture");
+        assert_eq!(content_type, "image/jpeg");
+        assert_eq!(bytes, b"des octets jpeg");
+    }
+
+    #[tokio::test]
+    async fn store_bytes_refuse_un_type_non_supporte() {
+        let store = storage();
+        let error = store
+            .store_bytes(b"GIF89a", "image/gif")
+            .await
+            .expect_err("type refusé");
+        assert!(matches!(error, PhotoError::UnsupportedType(_)));
     }
 
     #[tokio::test]

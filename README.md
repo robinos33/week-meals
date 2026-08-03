@@ -171,12 +171,28 @@ post avant de la découper à l'heuristique — titre en première ligne, sectio
 champs correspondants. Sans intertitre, la plus longue suite de lignes ayant la
 forme d'ingrédients (puce ou quantité en tête) fait office de liste.
 
-Trois limites à connaître : une légende sans le moindre ingrédient est refusée
-(« aucune recette n'a été trouvée sur cette page ») ; une recette qui n'existe
-que dans la vidéo ne peut pas être importée ; et la photo proposée pointe le CDN
-Instagram, dont les URLs **expirent** — mieux vaut la remplacer par un upload
-pour la garder. Instagram peut aussi refuser de servir la page à un serveur,
-l'import ressort alors en « page injoignable ».
+Deux limites à connaître : une légende sans le moindre ingrédient est refusée
+(« aucune recette n'a été trouvée sur cette page »), et une recette qui n'existe
+que dans la vidéo ne peut pas être importée. Instagram peut aussi refuser de
+servir la page à un serveur, l'import ressort alors en « page injoignable ».
+
+##### La photo est rapatriée
+
+Un brouillon d'import désigne sa photo par l'URL du site d'origine, qui ne tient
+pas dans le temps : une image déplacée, et la fiche affiche un cadre vide ; côté
+Instagram c'est une certitude, le CDN signe ses URLs avec une date d'expiration.
+L'API la **télécharge donc à l'import** et la range dans le stockage photo
+(volume ou R2, cf. ADR-0009), exactement comme un upload manuel — la recette
+garde une URL à nous.
+
+Le téléchargement passe par la **même garde SSRF** que le scraping (l'URL vient
+d'une page que personne ne contrôle), il est plafonné à 8 Mo comme le dépôt
+client, et le format est déduit des **octets** et non de l'en-tête distant : une
+page d'erreur servie en `image/jpeg` n'a aucune chance de finir rangée comme
+photo. Tout est *best-effort* : stockage non configuré, image injoignable, trop
+lourde ou d'un format non pris en charge, et le brouillon repart avec l'URL
+distante — l'import ne doit jamais échouer à cause d'une photo. En CLI, où il n'y
+a pas de stockage, `weekmeals scrape` garde l'URL distante dans le YAML.
 
 ### Rayons et magasins (cf. [ADR-0010](docs/adr/0010-rayons-catalogue-ferme-magasins.md))
 
