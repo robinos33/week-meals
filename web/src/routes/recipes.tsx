@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { totalTime, useRecipes, type RecipeView } from "../api/recipes";
+import { photoFocusPosition, totalTime, useRecipes, type RecipeView } from "../api/recipes";
 import "./screens.css";
 
 /** Médailles du podium des recettes les plus cuisinées (#58). */
@@ -92,7 +92,15 @@ export function RecipesScreen() {
                     {MEDALS[podium.get(recipe.id)!]}
                   </span>
                 )}
-                {recipe.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
+                {recipe.photo ? (
+                  <img
+                    src={recipe.photo}
+                    alt=""
+                    style={{ objectPosition: photoFocusPosition(recipe) }}
+                  />
+                ) : (
+                  "🍽️"
+                )}
               </div>
               <div className="recipe-card__body">
                 <div className="recipe-card__title">{recipe.title}</div>

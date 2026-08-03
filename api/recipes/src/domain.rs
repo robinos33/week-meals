@@ -48,6 +48,16 @@ pub struct Recipe {
     pub title: String,
     /// Photo : URL R2 ou chemin de seed. Optionnelle.
     pub photo: Option<String>,
+    /// Point de mire horizontal de la photo, en pourcentage de la largeur
+    /// (`0..=100`, 0 = gauche, 50 = centre, 100 = droite). Sert de composante X
+    /// à l'`object-position` du recadrage `cover` côté front : sans lui, le
+    /// cadre paysage d'une photo portrait tombe sur son centre — souvent un
+    /// visage plutôt que le plat. Posé au centre par les constructeurs ; ajusté
+    /// via [`Recipe::with_photo_focus`].
+    pub photo_focus_x: u8,
+    /// Point de mire vertical de la photo, en pourcentage de la hauteur
+    /// (`0..=100`, 0 = haut, 50 = centre, 100 = bas). Voir [`Self::photo_focus_x`].
+    pub photo_focus_y: u8,
     /// Temps de préparation en minutes. Optionnel.
     pub prep_time_min: Option<u32>,
     /// Temps de cuisson en minutes. Optionnel.
@@ -75,6 +85,11 @@ pub struct Recipe {
 /// `check (>= 0)` après troncature. On valide donc ici, pour que l'entrée
 /// hors bornes ressorte en `Invalid` (422) plutôt qu'en panne technique (500).
 pub const MAX_TIME_MIN: u32 = i32::MAX as u32;
+
+/// Point de mire par défaut d'une photo : le centre (50 %). Valeur des recettes
+/// sans recadrage choisi, et borne autour de laquelle [`Recipe::with_photo_focus`]
+/// contraint l'entrée.
+pub const PHOTO_FOCUS_CENTER: u8 = 50;
 
 impl Recipe {
     /// Construit une recette en validant ses invariants (titre non vide, temps
@@ -145,6 +160,8 @@ impl Recipe {
             steps,
             servings: DEFAULT_SERVINGS,
             cooked_count: 0,
+            photo_focus_x: PHOTO_FOCUS_CENTER,
+            photo_focus_y: PHOTO_FOCUS_CENTER,
         })
     }
 
@@ -164,6 +181,18 @@ impl Recipe {
     #[must_use]
     pub fn with_servings(mut self, servings: u32) -> Self {
         self.servings = servings.max(1);
+        self
+    }
+
+    /// Fixe le point de mire de la photo (pourcentages `0..=100`). Les valeurs
+    /// hors bornes sont ramenées dans l'intervalle : l'`object-position` du front
+    /// n'accepte que 0 à 100 %. Réservé à l'entrée utilisateur et à la
+    /// persistance ; les constructeurs laissent la photo centrée
+    /// ([`PHOTO_FOCUS_CENTER`]).
+    #[must_use]
+    pub fn with_photo_focus(mut self, x: u8, y: u8) -> Self {
+        self.photo_focus_x = x.min(100);
+        self.photo_focus_y = y.min(100);
         self
     }
 }
@@ -537,6 +566,24 @@ mod tests {
         let err =
             Recipe::new(HouseholdId::new(), "   ", None, None, None, vec![], vec![]).unwrap_err();
         assert_eq!(err, RecipeError::EmptyTitle);
+    }
+
+    #[test]
+    fn defaults_the_photo_focus_to_the_center() {
+        let recipe =
+            Recipe::new(HouseholdId::new(), "Salade", None, None, None, vec![], vec![]).unwrap();
+        assert_eq!(recipe.photo_focus_x, PHOTO_FOCUS_CENTER);
+        assert_eq!(recipe.photo_focus_y, PHOTO_FOCUS_CENTER);
+    }
+
+    #[test]
+    fn clamps_the_photo_focus_into_the_percentage_range() {
+        let recipe = Recipe::new(HouseholdId::new(), "Salade", None, None, None, vec![], vec![])
+            .unwrap()
+            .with_photo_focus(200, 80);
+        // Hors bornes ramené à 100 ; une valeur valide passe telle quelle.
+        assert_eq!(recipe.photo_focus_x, 100);
+        assert_eq!(recipe.photo_focus_y, 80);
     }
 
     #[test]

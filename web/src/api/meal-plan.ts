@@ -26,6 +26,9 @@ export interface RecipeSummary {
   id: string;
   title: string;
   photo: string | null;
+  /** Point de mire de la photo en % (voir `photoFocusPosition`). */
+  photo_focus_x: number;
+  photo_focus_y: number;
   /** Nombre de fois cuisinée (#58) — sert au podium de la grille Recettes. */
   cooked_count: number;
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   UNITS,
+  photoFocusPosition,
   totalTime,
   useDeleteRecipe,
   useRecipe,
@@ -73,7 +74,11 @@ export function RecipeDetailScreen() {
       </div>
 
       <div className="recipe-detail__photo">
-        {recipe.photo ? <img src={recipe.photo} alt="" /> : <span aria-hidden="true">🍽️</span>}
+        {recipe.photo ? (
+          <img src={recipe.photo} alt="" style={{ objectPosition: photoFocusPosition(recipe) }} />
+        ) : (
+          <span aria-hidden="true">🍽️</span>
+        )}
       </div>
 
       <h1 className="recipe-detail__title">{recipe.title}</h1>

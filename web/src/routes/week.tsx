@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { photoFocusPosition } from "../api/recipes";
 import { useGenerateList } from "../api/shopping-list";
 import { DEFAULT_WEEK_START_DAY, useHouseholdSettings } from "../api/household";
 import {
@@ -173,7 +174,15 @@ export function WeekScreen() {
                         aria-label={`Ouvrir ${recipe?.title ?? "la recette"}`}
                       >
                         <div className="slot__thumb">
-                          {recipe?.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
+                          {recipe?.photo ? (
+                            <img
+                              src={recipe.photo}
+                              alt=""
+                              style={{ objectPosition: photoFocusPosition(recipe) }}
+                            />
+                          ) : (
+                            "🍽️"
+                          )}
                         </div>
                         <span className="slot__title">{recipe?.title ?? "Recette"}</span>
                       </Link>
@@ -293,7 +302,15 @@ function RecipePicker({
                 onClick={() => onPick(recipe.id)}
               >
                 <div className="slot__thumb">
-                  {recipe.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
+                  {recipe.photo ? (
+                    <img
+                      src={recipe.photo}
+                      alt=""
+                      style={{ objectPosition: photoFocusPosition(recipe) }}
+                    />
+                  ) : (
+                    "🍽️"
+                  )}
                 </div>
                 <span>{recipe.title}</span>
               </button>

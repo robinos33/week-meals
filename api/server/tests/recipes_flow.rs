@@ -48,7 +48,9 @@ async fn recipe_crud_flow() {
             { "name": "courgette", "amount": 600.0, "unit": "g" },
             { "name": "gousse d'ail", "amount": 3.0, "unit": "piece" }
         ],
-        "steps": ["Émincer l'oignon.", "Laisser mijoter."]
+        "steps": ["Émincer l'oignon.", "Laisser mijoter."],
+        "photo_focus_x": 40,
+        "photo_focus_y": 70
     });
     let created = router
         .clone()
@@ -59,6 +61,9 @@ async fn recipe_crud_flow() {
     let created = json_body(created).await;
     let id = created["id"].as_str().unwrap().to_owned();
     assert_eq!(created["ingredients"].as_array().unwrap().len(), 2);
+    // Le point de mire de la photo est persisté et relu tel quel.
+    assert_eq!(created["photo_focus_x"], 40);
+    assert_eq!(created["photo_focus_y"], 70);
 
     // Recherche par le marqueur unique.
     let found = router
@@ -97,6 +102,9 @@ async fn recipe_crud_flow() {
     let updated = json_body(updated).await;
     assert_eq!(updated["title"], format!("Ratatouille express {marker}"));
     assert_eq!(updated["ingredients"].as_array().unwrap().len(), 1);
+    // Corps sans point de mire : il retombe au centre (50/50) par défaut.
+    assert_eq!(updated["photo_focus_x"], 50);
+    assert_eq!(updated["photo_focus_y"], 50);
 
     // Suppression, puis 404.
     let deleted = router

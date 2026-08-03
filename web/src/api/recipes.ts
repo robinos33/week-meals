@@ -34,6 +34,10 @@ export interface RecipeView {
   household_id: string;
   title: string;
   photo: string | null;
+  /** Point de mire horizontal de la photo, en % (0 = gauche, 50 = centre). */
+  photo_focus_x: number;
+  /** Point de mire vertical de la photo, en % (0 = haut, 50 = centre). */
+  photo_focus_y: number;
   prep_time_min: number | null;
   cook_time_min: number | null;
   ingredients: Ingredient[];
@@ -54,6 +58,12 @@ export interface RecipeInput {
   steps: string[];
   /** Nombre de personnes (base des quantités). */
   servings: number;
+  /**
+   * Point de mire de la photo en % (0 = gauche/haut, 50 = centre). Optionnel :
+   * l'API retombe au centre s'il est absent (recette importée ou sauvegardée).
+   */
+  photo_focus_x?: number;
+  photo_focus_y?: number;
 }
 
 /**
@@ -97,6 +107,20 @@ export async function uploadPhoto(file: File): Promise<string> {
     throw new Error(`Échec de l'upload (${response.status})`);
   }
   return public_url;
+}
+
+/**
+ * `object-position` d'une photo recadrée `cover` (grille, fiche, semaine) :
+ * garde le point de mire choisi dans le cadre plutôt que le centre géométrique,
+ * qui tombe souvent sur un visage. Défaut : centre.
+ */
+export function photoFocusPosition(recipe: {
+  photo_focus_x?: number | null;
+  photo_focus_y?: number | null;
+}): string {
+  const x = recipe.photo_focus_x ?? 50;
+  const y = recipe.photo_focus_y ?? 50;
+  return `${x}% ${y}%`;
 }
 
 /** Temps total (préparation + cuisson) formaté, ou `null` si non renseigné. */

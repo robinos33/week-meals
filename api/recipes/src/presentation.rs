@@ -112,6 +112,12 @@ fn default_servings() -> u32 {
     DEFAULT_SERVINGS
 }
 
+/// Valeur par défaut d'un point de mire absent du corps : le centre. Une recette
+/// importée ou sauvegardée sans recadrage choisi reste ainsi centrée.
+fn default_focus() -> u8 {
+    crate::domain::PHOTO_FOCUS_CENTER
+}
+
 /// Corps de création / mise à jour d'une recette.
 #[derive(Debug, Deserialize)]
 struct RecipeBody {
@@ -128,6 +134,10 @@ struct RecipeBody {
     steps: Vec<String>,
     #[serde(default = "default_servings")]
     servings: u32,
+    #[serde(default = "default_focus")]
+    photo_focus_x: u8,
+    #[serde(default = "default_focus")]
+    photo_focus_y: u8,
 }
 
 impl From<RecipeBody> for RecipeFields {
@@ -140,6 +150,8 @@ impl From<RecipeBody> for RecipeFields {
             ingredients: body.ingredients.into_iter().map(Into::into).collect(),
             steps: body.steps,
             servings: body.servings,
+            photo_focus_x: body.photo_focus_x,
+            photo_focus_y: body.photo_focus_y,
         }
     }
 }
@@ -159,6 +171,11 @@ struct RecipeView {
     household_id: Uuid,
     title: String,
     photo: Option<String>,
+    /// Point de mire horizontal de la photo (pourcentage `0..=100`) : sert d'
+    /// `object-position` au recadrage côté front.
+    photo_focus_x: u8,
+    /// Point de mire vertical de la photo (pourcentage `0..=100`).
+    photo_focus_y: u8,
     prep_time_min: Option<u32>,
     cook_time_min: Option<u32>,
     ingredients: Vec<IngredientView>,
@@ -177,6 +194,8 @@ impl From<Recipe> for RecipeView {
             household_id: recipe.household_id.as_uuid(),
             title: recipe.title,
             photo: recipe.photo,
+            photo_focus_x: recipe.photo_focus_x,
+            photo_focus_y: recipe.photo_focus_y,
             prep_time_min: recipe.prep_time_min,
             cook_time_min: recipe.cook_time_min,
             ingredients: recipe

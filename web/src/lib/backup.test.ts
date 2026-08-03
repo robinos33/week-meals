@@ -8,6 +8,8 @@ function recipe(overrides: Partial<RecipeView> = {}): RecipeView {
     household_id: "h1",
     title: "Ratatouille",
     photo: "https://cdn.example.test/rata.jpg",
+    photo_focus_x: 50,
+    photo_focus_y: 50,
     prep_time_min: 25,
     cook_time_min: 45,
     ingredients: [{ name: "courgette", amount: 600, unit: "g" }],
