@@ -23,6 +23,10 @@ pub struct RecipeFields {
     pub steps: Vec<String>,
     /// Nombre de personnes de la recette (base des quantités). Doit être `> 0`.
     pub servings: u32,
+    /// Point de mire horizontal de la photo (pourcentage `0..=100`, 50 = centre).
+    pub photo_focus_x: u8,
+    /// Point de mire vertical de la photo (pourcentage `0..=100`, 50 = centre).
+    pub photo_focus_y: u8,
 }
 
 /// Message d'une entrée de portions invalide.
@@ -82,7 +86,9 @@ impl<'a> CreateRecipeHandler<'a> {
             ingredients,
             command.fields.steps,
         ) {
-            Ok(recipe) => recipe.with_servings(command.fields.servings),
+            Ok(recipe) => recipe
+                .with_servings(command.fields.servings)
+                .with_photo_focus(command.fields.photo_focus_x, command.fields.photo_focus_y),
             Err(error) => return CreateRecipeResponse::Invalid(error.to_string()),
         };
 
@@ -150,7 +156,9 @@ impl<'a> UpdateRecipeHandler<'a> {
             ingredients,
             command.fields.steps,
         ) {
-            Ok(recipe) => recipe.with_servings(command.fields.servings),
+            Ok(recipe) => recipe
+                .with_servings(command.fields.servings)
+                .with_photo_focus(command.fields.photo_focus_x, command.fields.photo_focus_y),
             Err(error) => return UpdateRecipeResponse::Invalid(error.to_string()),
         };
 
@@ -240,6 +248,8 @@ mod tests {
             }],
             steps: vec!["Émincer.".to_owned()],
             servings: 2,
+            photo_focus_x: 50,
+            photo_focus_y: 50,
         }
     }
 

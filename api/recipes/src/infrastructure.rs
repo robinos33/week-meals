@@ -12,7 +12,9 @@ use kernel::{HouseholdId, Quantity, RecipeId, RepositoryError, Unit, DEFAULT_SER
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use uuid::Uuid;
 
-use crate::domain::{normalize_title, Recipe, RecipeIngredient, RecipeRepository};
+use crate::domain::{
+    normalize_title, Recipe, RecipeIngredient, RecipeRepository, PHOTO_FOCUS_CENTER,
+};
 
 /// Import d'une recette par URL (scraping JSON-LD + garde SSRF).
 pub mod scrape;
@@ -76,6 +78,8 @@ struct RecipeRow {
     household_id: Uuid,
     title: String,
     photo: Option<String>,
+    photo_focus_x: i32,
+    photo_focus_y: i32,
     prep_time_min: Option<i32>,
     cook_time_min: Option<i32>,
     servings: i32,
@@ -122,6 +126,17 @@ fn assemble(
         .ok()
         .filter(|&s| s > 0)
         .unwrap_or(DEFAULT_SERVINGS);
+    // Les colonnes sont contraintes `between 0 and 100` ; une valeur hors bornes
+    // serait une corruption — on retombe sur le centre plutôt que sur un
+    // `object-position` invalide.
+    let photo_focus_x = u8::try_from(row.photo_focus_x)
+        .ok()
+        .filter(|&p| p <= 100)
+        .unwrap_or(PHOTO_FOCUS_CENTER);
+    let photo_focus_y = u8::try_from(row.photo_focus_y)
+        .ok()
+        .filter(|&p| p <= 100)
+        .unwrap_or(PHOTO_FOCUS_CENTER);
     Recipe::from_parts(
         RecipeId::from(row.id),
         HouseholdId::from(row.household_id),
@@ -136,6 +151,7 @@ fn assemble(
         recipe
             .with_cooked_count(cooked_count)
             .with_servings(servings)
+            .with_photo_focus(photo_focus_x, photo_focus_y)
     })
     .map_err(|e| RepositoryError::Backend(format!("invalid stored recipe: {e}")))
 }
@@ -270,14 +286,17 @@ impl RecipeRepository for SqlxRecipeRepository {
         let mut tx = self.pool.begin().await.map_err(backend)?;
         sqlx::query(
             "insert into recipes \
-             (id, household_id, title, title_norm, photo, prep_time_min, cook_time_min, servings) \
-             values (?, ?, ?, ?, ?, ?, ?, ?)",
+             (id, household_id, title, title_norm, photo, photo_focus_x, photo_focus_y, \
+              prep_time_min, cook_time_min, servings) \
+             values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(recipe.id.as_uuid())
         .bind(recipe.household_id.as_uuid())
         .bind(&recipe.title)
         .bind(normalize_title(&recipe.title))
         .bind(recipe.photo.as_deref())
+        .bind(i32::from(recipe.photo_focus_x))
+        .bind(i32::from(recipe.photo_focus_y))
         .bind(minutes_to_sql(recipe.prep_time_min))
         .bind(minutes_to_sql(recipe.cook_time_min))
         .bind(i32::try_from(recipe.servings).unwrap_or(i32::MAX))
@@ -294,7 +313,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         id: RecipeId,
     ) -> Result<Option<Recipe>, RepositoryError> {
         let row: Option<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min, servings, cooked_count \
+            "select id, household_id, title, photo, photo_focus_x, photo_focus_y, prep_time_min, cook_time_min, servings, cooked_count \
              from recipes where id = ? and household_id = ?",
         )
         .bind(id.as_uuid())
@@ -311,7 +330,7 @@ impl RecipeRepository for SqlxRecipeRepository {
 
     async fn list(&self, household_id: HouseholdId) -> Result<Vec<Recipe>, RepositoryError> {
         let rows: Vec<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min, servings, cooked_count \
+            "select id, household_id, title, photo, photo_focus_x, photo_focus_y, prep_time_min, cook_time_min, servings, cooked_count \
              from recipes where household_id = ? order by title_norm",
         )
         .bind(household_id.as_uuid())
@@ -330,7 +349,7 @@ impl RecipeRepository for SqlxRecipeRepository {
         // « creme » trouvent « Crème brûlée » (cf. ADR-0008).
         let pattern = format!("%{}%", escape_like(&normalize_title(query)));
         let rows: Vec<RecipeRow> = sqlx::query_as(
-            "select id, household_id, title, photo, prep_time_min, cook_time_min, servings, cooked_count \
+            "select id, household_id, title, photo, photo_focus_x, photo_focus_y, prep_time_min, cook_time_min, servings, cooked_count \
              from recipes where household_id = ? and title_norm like ? escape '\\' \
              order by title_norm",
         )
@@ -348,13 +367,16 @@ impl RecipeRepository for SqlxRecipeRepository {
         // l'ordre des `bind` suit celui du texte SQL — le `set` d'abord, le
         // `where` ensuite.
         let result = sqlx::query(
-            "update recipes set title = ?, title_norm = ?, photo = ?, prep_time_min = ?, \
-             cook_time_min = ?, servings = ?, updated_at = datetime('now') \
+            "update recipes set title = ?, title_norm = ?, photo = ?, photo_focus_x = ?, \
+             photo_focus_y = ?, prep_time_min = ?, cook_time_min = ?, servings = ?, \
+             updated_at = datetime('now') \
              where id = ? and household_id = ?",
         )
         .bind(&recipe.title)
         .bind(normalize_title(&recipe.title))
         .bind(recipe.photo.as_deref())
+        .bind(i32::from(recipe.photo_focus_x))
+        .bind(i32::from(recipe.photo_focus_y))
         .bind(minutes_to_sql(recipe.prep_time_min))
         .bind(minutes_to_sql(recipe.cook_time_min))
         .bind(i32::try_from(recipe.servings).unwrap_or(i32::MAX))

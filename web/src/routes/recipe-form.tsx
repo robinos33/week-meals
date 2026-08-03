@@ -1,4 +1,11 @@
-import { useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
+import {
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
   UNITS,
@@ -45,6 +52,74 @@ function toMinutes(value: string): number | null {
   return value.trim() && Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
 }
 
+/** Ramène une valeur dans l'intervalle de pourcentage `[0, 100]`, arrondie. */
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+/**
+ * Sélecteur du point de mire d'une photo (#un89mr). L'image est montrée en
+ * entier ; l'auteur clique sur le sujet à garder au cadrage (le plat plutôt
+ * qu'un visage), et un repère marque le point choisi. Les flèches l'ajustent au
+ * clavier. Ce point sert d'`object-position` aux cadres `cover` de la grille et
+ * de la fiche — l'aperçu de droite en montre le rendu.
+ */
+function PhotoFocusPicker({
+  photo,
+  x,
+  y,
+  onPick,
+}: {
+  photo: string;
+  x: number;
+  y: number;
+  onPick: (x: number, y: number) => void;
+}) {
+  function pickFromPointer(event: MouseEvent<HTMLButtonElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    onPick(
+      clampPercent(((event.clientX - rect.left) / rect.width) * 100),
+      clampPercent(((event.clientY - rect.top) / rect.height) * 100),
+    );
+  }
+
+  function nudge(event: KeyboardEvent<HTMLButtonElement>) {
+    const STEP = 5;
+    const moves: Record<string, [number, number]> = {
+      ArrowLeft: [-STEP, 0],
+      ArrowRight: [STEP, 0],
+      ArrowUp: [0, -STEP],
+      ArrowDown: [0, STEP],
+    };
+    const move = moves[event.key];
+    if (!move) return;
+    event.preventDefault();
+    onPick(clampPercent(x + move[0]), clampPercent(y + move[1]));
+  }
+
+  return (
+    <div className="photo-focus">
+      <button
+        type="button"
+        className="photo-focus__stage"
+        onClick={pickFromPointer}
+        onKeyDown={nudge}
+        aria-label="Choisir le point de la photo à garder au cadrage (flèches pour ajuster)"
+      >
+        <img src={photo} alt="" />
+        <span
+          className="photo-focus__marker"
+          style={{ left: `${x}%`, top: `${y}%` }}
+          aria-hidden="true"
+        />
+      </button>
+      <div className="photo-focus__preview" aria-hidden="true">
+        <img src={photo} alt="" style={{ objectPosition: `${x}% ${y}%` }} />
+      </div>
+    </div>
+  );
+}
+
 /**
  * Formulaire partagé création / édition. Contrôlé, avec listes dynamiques
  * d'ingrédients et d'étapes. Les lignes vides sont ignorées à l'envoi.
@@ -76,6 +151,11 @@ function RecipeForm({
     initial?.servings != null ? String(initial.servings) : "2",
   );
   const [photo, setPhoto] = useState(initial?.photo ?? "");
+  // Point de mire de la photo, en % (50/50 = centre). Une nouvelle photo
+  // (upload ou import) le remet au centre : le recadrage précédent n'a plus de
+  // sens sur une autre image.
+  const [focusX, setFocusX] = useState(initial?.photo_focus_x ?? 50);
+  const [focusY, setFocusY] = useState(initial?.photo_focus_y ?? 50);
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState("");
   const [showPhotoUrl, setShowPhotoUrl] = useState(false);
@@ -117,7 +197,12 @@ function RecipeForm({
         setPrep(draft.prep_time_min != null ? String(draft.prep_time_min) : "");
         setCook(draft.cook_time_min != null ? String(draft.cook_time_min) : "");
         setServings(String(draft.servings ?? 2));
-        if (draft.photo) setPhoto(draft.photo);
+        if (draft.photo) {
+          setPhoto(draft.photo);
+          // Photo fraîchement importée : recadrage au centre, à ajuster.
+          setFocusX(50);
+          setFocusY(50);
+        }
         setIngredients(
           draft.ingredients.length
             ? draft.ingredients.map((i) => ({
@@ -150,6 +235,9 @@ function RecipeForm({
     setUploading(true);
     try {
       setPhoto(await uploadPhoto(file));
+      // Nouvelle image : le point de mire repart du centre.
+      setFocusX(50);
+      setFocusY(50);
     } catch (err) {
       if (err instanceof ApiError && err.status === 503) {
         setShowPhotoUrl(true);
@@ -170,6 +258,8 @@ function RecipeForm({
       prep_time_min: toMinutes(prep),
       cook_time_min: toMinutes(cook),
       photo: photo.trim() || null,
+      photo_focus_x: focusX,
+      photo_focus_y: focusY,
       servings: Number.isFinite(parsedServings) && parsedServings > 0 ? parsedServings : 2,
       // On ne garde que les lignes exploitables : un nom et une quantité > 0.
       ingredients: ingredients
@@ -291,15 +381,32 @@ function RecipeForm({
           <div className="photo-upload">
             {photo && (
               <div className="photo-upload__preview">
-                <img src={photo} alt="" />
+                <PhotoFocusPicker
+                  photo={photo}
+                  x={focusX}
+                  y={focusY}
+                  onPick={(x, y) => {
+                    setFocusX(x);
+                    setFocusY(y);
+                  }}
+                />
                 <button
                   type="button"
                   className="btn btn--danger-ghost"
-                  onClick={() => setPhoto("")}
+                  onClick={() => {
+                    setPhoto("");
+                    setFocusX(50);
+                    setFocusY(50);
+                  }}
                 >
                   Retirer
                 </button>
               </div>
+            )}
+            {photo && (
+              <p className="field-hint">
+                Cliquez sur le plat pour le garder au centre du cadrage (grille et fiche).
+              </p>
             )}
             <label className="btn photo-upload__pick">
               {uploading ? "Envoi…" : photo ? "Changer la photo" : "Choisir une photo"}
