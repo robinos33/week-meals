@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useGenerateList } from "../api/shopping-list";
 import { DEFAULT_WEEK_START_DAY, useHouseholdSettings } from "../api/household";
 import {
@@ -166,10 +166,17 @@ export function WeekScreen() {
                   <div className="slot slot--filled" key={slot}>
                     <span className="slot__label">{label}</span>
                     <div className="slot__recipe">
-                      <div className="slot__thumb">
-                        {recipe?.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
-                      </div>
-                      <span className="slot__title">{recipe?.title ?? "Recette"}</span>
+                      <Link
+                        className="slot__open"
+                        to="/recipes/$recipeId"
+                        params={{ recipeId: entry.recipe_id }}
+                        aria-label={`Ouvrir ${recipe?.title ?? "la recette"}`}
+                      >
+                        <div className="slot__thumb">
+                          {recipe?.photo ? <img src={recipe.photo} alt="" /> : "🍽️"}
+                        </div>
+                        <span className="slot__title">{recipe?.title ?? "Recette"}</span>
+                      </Link>
                       <button
                         className="slot__remove"
                         type="button"
