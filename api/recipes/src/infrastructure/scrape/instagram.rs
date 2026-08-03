@@ -109,8 +109,81 @@ fn is_shortcode(candidate: &str) -> bool {
 pub fn parse_recipe(html: &str) -> Option<ScrapedRecipe> {
     let caption = caption(html)?;
     let mut recipe = parse_caption(&caption)?;
-    recipe.photo = og_content(html, "og:image");
+    recipe.photo = photo(html);
     Some(recipe)
+}
+
+// --- Extraction de la photo -----------------------------------------------
+
+/// Hôtes du CDN Instagram : reconnaître une URL d'image sans dépendre d'une
+/// classe CSS.
+const CDN_HOSTS: &[&str] = &["cdninstagram.com", "fbcdn.net"];
+
+/// Photo de la publication — la vignette que les messageries affichent en
+/// aperçu du lien.
+///
+/// La page `embed` n'est pas la page du post : elle ne porte pas toujours les
+/// balises OpenGraph. On essaie donc, dans l'ordre : `og:image` quand elle est
+/// là, l'`<img>` du média intégré, le JSON de la page (`display_url`), puis
+/// n'importe quelle image servie par le CDN Instagram.
+///
+/// Les URLs du CDN sont **signées et datées** : celle-ci finira par expirer.
+/// C'est une photo de brouillon, à remplacer par un upload pour la garder.
+fn photo(html: &str) -> Option<String> {
+    og_content(html, "og:image")
+        .or_else(|| media_image(html))
+        .or_else(|| json_photo(html))
+        .filter(|url| url.starts_with("https://"))
+}
+
+/// `src` de l'`<img>` du média intégré, sinon de la première image du CDN.
+///
+/// L'attribut est décodé : dans le HTML, les `&` des URLs signées arrivent en
+/// `&amp;` — les recopier tels quels casserait la signature.
+fn media_image(html: &str) -> Option<String> {
+    let images = Regex::new(r"(?is)<img[^>]*>").ok()?;
+    let mut cdn_fallback = None;
+    for tag in images.find_iter(html) {
+        let tag = tag.as_str();
+        let Some(source) = attribute(tag, "src") else {
+            continue;
+        };
+        if tag.contains("EmbeddedMediaImage") {
+            return Some(source);
+        }
+        if cdn_fallback.is_none() && CDN_HOSTS.iter().any(|host| source.contains(host)) {
+            cdn_fallback = Some(source);
+        }
+    }
+    cdn_fallback
+}
+
+/// Valeur décodée d'un attribut HTML d'une balise.
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let pattern = format!(r#"(?is)\b{name}\s*=\s*["']([^"']*)["']"#);
+    let value = Regex::new(&pattern).ok()?.captures(tag)?.get(1)?.as_str();
+    Some(decode_entities(value))
+}
+
+/// Photo depuis le JSON embarqué, sous les clés qu'Instagram y emploie.
+fn json_photo(html: &str) -> Option<String> {
+    ["display_url", "thumbnail_src", "display_src"]
+        .into_iter()
+        .find_map(|key| {
+            // La clé est cherchée avec ses guillemets, sous les deux formes :
+            // la fenêtre doit commencer sur le guillemet (ou son échappement)
+            // pour que `json_string_after` la retrouve.
+            let anchor = html
+                .find(&format!(r#""{key}""#))
+                .or_else(|| html.find(&format!(r#"\"{key}\""#)))?;
+            let window = window_from(html, anchor, JSON_WINDOW_CHARS);
+            let window = if window.contains(&format!(r#"\"{key}\""#)) {
+                strip_one_escape_level(window)
+            } else {
+                window.to_owned()
+            };
+            json_string_after(&window, key)
+        })
 }
 
 // --- Extraction de la légende ---------------------------------------------
@@ -922,6 +995,66 @@ mod tests {
 
         assert_eq!(recipe.title, "Houmous maison");
         assert_eq!(recipe.ingredients.len(), 2);
+    }
+
+    /// Page `embed` telle qu'Instagram la sert : pas de balise OpenGraph, le
+    /// média dans un `<img class="EmbeddedMediaImage">` dont l'URL signée a ses
+    /// `&` échappés.
+    const EMBED_PAGE: &str = r#"<html><body>
+        <div class="EmbedFrame">
+          <img class="EmbeddedMediaImage" referrerpolicy="origin-when-cross-origin"
+               src="https://scontent.cdninstagram.com/v/t51.29350-15/photo.jpg?stp=dst-jpg&amp;_nc_ht=scontent.cdninstagram.com&amp;oh=00_AY&amp;oe=65F0"/>
+          <div class="Caption">Chili sin carne<br>Ingrédients :<br>- 400 g de haricots rouges<br>- 1 poivron</div>
+        </div></body></html>"#;
+
+    #[test]
+    fn reads_the_photo_from_the_embedded_media_image() {
+        let recipe = parse_recipe(EMBED_PAGE).expect("recette trouvée");
+        // Les `&amp;` sont décodés : une URL signée recopiée telle quelle
+        // serait rejetée par le CDN.
+        assert_eq!(
+            recipe.photo.as_deref(),
+            Some(
+                "https://scontent.cdninstagram.com/v/t51.29350-15/photo.jpg\
+                 ?stp=dst-jpg&_nc_ht=scontent.cdninstagram.com&oh=00_AY&oe=65F0"
+            )
+        );
+    }
+
+    #[test]
+    fn prefers_the_open_graph_image_when_the_page_has_one() {
+        let html = format!(
+            r#"<meta property="og:image" content="https://scontent.cdninstagram.com/apercu.jpg">{EMBED_PAGE}"#
+        );
+        let recipe = parse_recipe(&html).expect("recette trouvée");
+        assert_eq!(
+            recipe.photo.as_deref(),
+            Some("https://scontent.cdninstagram.com/apercu.jpg")
+        );
+    }
+
+    #[test]
+    fn reads_the_photo_from_the_embedded_json() {
+        let html = concat!(
+            r#"<script>handle({"contextJSON":"{\"display_url\":"#,
+            r#"\"https://scontent.cdninstagram.com/plat.jpg?oe=1\\u0026oh=2\","#,
+            r#"\"edge_media_to_caption\":{\"edges\":[{\"node\":{\"text\":"#,
+            r#"\"Curry\\nIngr\\u00e9dients :\\n- 300 g de pois chiches\\n- 20 cl de lait de coco\"}}]}}"});</script>"#,
+        );
+        let recipe = parse_recipe(html).expect("recette trouvée");
+        assert_eq!(
+            recipe.photo.as_deref(),
+            Some("https://scontent.cdninstagram.com/plat.jpg?oe=1&oh=2")
+        );
+    }
+
+    #[test]
+    fn ignores_a_decorative_image_that_is_not_the_media() {
+        // Un logo servi hors CDN ne doit pas devenir la photo de la recette.
+        let html = r#"<img class="Logo" src="https://static.test/logo.svg"/>
+            <div class="Caption">Soupe<br>Ingrédients :<br>- 3 carottes<br>- 1 oignon</div>"#;
+        let recipe = parse_recipe(html).expect("recette trouvée");
+        assert_eq!(recipe.photo, None);
     }
 
     #[test]
