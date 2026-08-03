@@ -570,17 +570,33 @@ mod tests {
 
     #[test]
     fn defaults_the_photo_focus_to_the_center() {
-        let recipe =
-            Recipe::new(HouseholdId::new(), "Salade", None, None, None, vec![], vec![]).unwrap();
+        let recipe = Recipe::new(
+            HouseholdId::new(),
+            "Salade",
+            None,
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap();
         assert_eq!(recipe.photo_focus_x, PHOTO_FOCUS_CENTER);
         assert_eq!(recipe.photo_focus_y, PHOTO_FOCUS_CENTER);
     }
 
     #[test]
     fn clamps_the_photo_focus_into_the_percentage_range() {
-        let recipe = Recipe::new(HouseholdId::new(), "Salade", None, None, None, vec![], vec![])
-            .unwrap()
-            .with_photo_focus(200, 80);
+        let recipe = Recipe::new(
+            HouseholdId::new(),
+            "Salade",
+            None,
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+        .unwrap()
+        .with_photo_focus(200, 80);
         // Hors bornes ramené à 100 ; une valeur valide passe telle quelle.
         assert_eq!(recipe.photo_focus_x, 100);
         assert_eq!(recipe.photo_focus_y, 80);
