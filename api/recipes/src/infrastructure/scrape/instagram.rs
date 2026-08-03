@@ -564,7 +564,11 @@ fn first_duration(text: &str) -> Option<u32> {
             .get(2)
             .and_then(|minutes| minutes.as_str().parse().ok())
             .unwrap_or(0);
-        return (h * 60 + m > 0).then_some(h * 60 + m);
+        // Saturant : une légende peut annoncer n'importe quel nombre d'heures,
+        // et un débordement paniquerait en debug. Une valeur absurde ressortira
+        // en `TimeOutOfRange` (422) à l'enregistrement, pas en 500 à l'import.
+        let total = h.saturating_mul(60).saturating_add(m);
+        return (total > 0).then_some(total);
     }
     let minutes = Regex::new(r"(\d+)\s*(?:min|mn|minutes?)\b").ok()?;
     minutes
@@ -846,6 +850,14 @@ mod tests {
     }
 
     #[test]
+    fn survives_an_absurd_duration() {
+        // Une légende peut annoncer n'importe quoi : pas de débordement.
+        let caption = "Cassoulet\nCuisson : 999999999 h 59\nIngrédients :\n- 1 kg de haricots";
+        let recipe = parse_caption(caption).expect("recette trouvée");
+        assert_eq!(recipe.cook_time_min, Some(u32::MAX));
+    }
+
+    #[test]
     fn rejects_a_caption_without_ingredients() {
         assert!(parse_caption("Belle journée au marché ☀️ #dimanche").is_none());
         assert!(parse_caption("").is_none());
@@ -915,5 +927,70 @@ mod tests {
     #[test]
     fn ignores_a_page_without_a_caption() {
         assert!(parse_recipe("<html><body>Connectez-vous</body></html>").is_none());
+    }
+}
+
+#[cfg(test)]
+mod fuzz {
+    /// Garde-fou contre les paniques de découpage : le module tranche beaucoup
+    /// de chaînes (fenêtres, indices de regex), et une légende Instagram est du
+    /// texte que personne ne contrôle. Un échantillon suffit à réveiller un
+    /// `&text[i..]` posé sur une frontière de caractère invalide ; la campagne
+    /// initiale (20 000 tirages) est passée sans panique.
+    ///
+    /// Générateur pseudo-aléatoire déterministe (xorshift) — pas de dépendance.
+    fn next(state: &mut u64) -> u64 {
+        *state ^= *state << 13;
+        *state ^= *state >> 7;
+        *state ^= *state << 17;
+        *state
+    }
+
+    #[test]
+    fn never_panics_on_arbitrary_input() {
+        const ALPHABET: &[&str] = &[
+            "é",
+            "🍝",
+            "\n",
+            "<div class=\"Caption\">",
+            "</div>",
+            "<br>",
+            "&#x2F;",
+            "\\\"text\\\":",
+            "edge_media_to_caption",
+            "\"text\":\"",
+            "og:description",
+            "1/2",
+            "½",
+            "- ",
+            "1) ",
+            "999999999 h",
+            "Ingrédients :",
+            "Préparation",
+            "pour 4 personnes",
+            "min",
+            "h",
+            ":",
+            "\"",
+            "\\",
+            "#tag",
+            "•",
+            "\u{200d}",
+            "\u{fe0f}",
+            "0",
+            "9",
+            " ",
+            "meta property=",
+        ];
+        let mut state = 0x2026_0803_dead_beef;
+        for _ in 0..200 {
+            let length = (next(&mut state) % 40) as usize;
+            let mut input = String::new();
+            for _ in 0..length {
+                input.push_str(ALPHABET[(next(&mut state) as usize) % ALPHABET.len()]);
+            }
+            let _ = super::parse_recipe(&input);
+            let _ = super::parse_caption(&input);
+        }
     }
 }
