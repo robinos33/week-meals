@@ -160,6 +160,24 @@ avant d'enregistrer). Exposé en API, c'est le serveur qui va chercher l'URL :
 `POST /api/recipes/scrape` est donc gardé contre le **SSRF** (https uniquement, IP
 publiques vérifiées et épinglées, redirections coupées, taille bornée).
 
+##### Instagram
+
+Les liens de publication Instagram (`/p/…`, `/reel/…`, `/tv/…`, avec ou sans
+paramètres de partage) sont acceptés eux aussi. Ces pages n'ont pas de JSON-LD :
+la recette est dans la **légende**, qu'on lit sur la page `embed` publique du
+post avant de la découper à l'heuristique — titre en première ligne, sections
+« Ingrédients » / « Préparation », puces et numérotations retirées, hashtags et
+« abonne-toi » jetés, « pour N personnes » et « prépa 10 min » repris dans les
+champs correspondants. Sans intertitre, la plus longue suite de lignes ayant la
+forme d'ingrédients (puce ou quantité en tête) fait office de liste.
+
+Trois limites à connaître : une légende sans le moindre ingrédient est refusée
+(« aucune recette n'a été trouvée sur cette page ») ; une recette qui n'existe
+que dans la vidéo ne peut pas être importée ; et la photo proposée pointe le CDN
+Instagram, dont les URLs **expirent** — mieux vaut la remplacer par un upload
+pour la garder. Instagram peut aussi refuser de servir la page à un serveur,
+l'import ressort alors en « page injoignable ».
+
 ### Rayons et magasins (cf. [ADR-0010](docs/adr/0010-rayons-catalogue-ferme-magasins.md))
 
 Le `category` d'un ingrédient est un **rayon**, pris dans un catalogue fermé

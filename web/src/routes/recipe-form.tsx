@@ -198,7 +198,7 @@ function RecipeForm({
                 className="input"
                 type="url"
                 inputMode="url"
-                placeholder="https://…"
+                placeholder="https://… ou un lien Instagram"
                 value={importUrl}
                 onChange={(e) => setImportUrl(e.target.value)}
                 onKeyDown={(e) => {
@@ -219,7 +219,8 @@ function RecipeForm({
               </button>
             </div>
             <p className="field-hint">
-              Les champs sont préremplis à partir de la page, à corriger avant d'enregistrer.
+              Site de cuisine ou publication Instagram (post ou reel) : les champs sont préremplis
+              à partir de la page, à corriger avant d'enregistrer.
             </p>
             {importError && (
               <p className="form-error" role="alert">

@@ -8,6 +8,12 @@
 //! texte libre (« 2 c. à soupe d'huile »), leur découpage en `amount`/`unit`
 //! est heuristique.
 //!
+//! ## Instagram
+//! Une publication Instagram n'a pas de JSON-LD `Recipe` : sa recette est dans
+//! la légende. Ces URLs sont donc déroutées vers le module [`instagram`], qui
+//! récupère la page `embed` publique et découpe la légende. Le reste de la
+//! chaîne (garde SSRF, brouillon renvoyé au formulaire) est identique.
+//!
 //! ## Garde SSRF
 //! Exposé en API, c'est le serveur qui va chercher une URL fournie par le
 //! client — on pourrait lui faire taper `http://localhost:…`, l'IP de
@@ -28,6 +34,8 @@ use reqwest::Url;
 use serde_json::Value;
 
 use crate::domain::{RecipeScraper, ScrapeError, ScrapedIngredient, ScrapedRecipe};
+
+pub mod instagram;
 
 /// Taille maximale d'une page analysée : une recette ne pèse pas 5 Mo.
 const MAX_BYTES: usize = 5 * 1024 * 1024;
@@ -109,6 +117,13 @@ impl HttpRecipeScraper {
 #[async_trait::async_trait]
 impl RecipeScraper for HttpRecipeScraper {
     async fn scrape(&self, url: &str) -> Result<ScrapedRecipe, ScrapeError> {
+        let parsed = Url::parse(url).map_err(|_| ScrapeError::InvalidUrl)?;
+        // Instagram : pas de JSON-LD, la recette est dans la légende de la page
+        // `embed` — qu'on va chercher à la place de l'URL partagée.
+        if let Some(embed) = instagram::embed_url(&parsed) {
+            let html = self.fetch(&embed).await?;
+            return instagram::parse_recipe(&html).ok_or(ScrapeError::NoRecipe);
+        }
         let html = self.fetch(url).await?;
         parse_recipe(&html).ok_or(ScrapeError::NoRecipe)
     }

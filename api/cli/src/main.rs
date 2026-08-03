@@ -77,7 +77,7 @@ enum Command {
     },
     /// Extrait une recette d'une page web vers le YAML de seed (brouillon à relire).
     Scrape {
-        /// URL de la page de recette.
+        /// URL de la page de recette (site de cuisine ou publication Instagram).
         url: String,
         /// Fichier de sortie. Défaut : stdout.
         #[arg(long)]
