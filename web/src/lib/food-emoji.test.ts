@@ -70,6 +70,13 @@ describe("foodEmoji", () => {
     expect(foodEmoji("croquettes pour chat")).toBe("🐾");
   });
 
+  it("reconnaît les produits d'une liste réelle tombés en Autres", () => {
+    expect(foodEmoji("burrata")).toBe("🧀");
+    expect(foodEmoji("fajitas")).toBe("🌯");
+    expect(foodEmoji("biscottes")).toBe("🍞");
+    expect(foodEmoji("Cassegrain")).toBe("🥫");
+  });
+
   it("renvoie null pour un aliment inconnu", () => {
     expect(foodEmoji("quinoa")).toBeNull();
     expect(foodEmoji("")).toBeNull();

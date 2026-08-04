@@ -225,6 +225,12 @@ ingredients:
             ("Coppa", "coppa"),
             ("Sauce tomate", "sauce tomate"),
             ("Limande", "limande"),
+            ("Cassegrain", "cassegrain"),
+            ("Biscottes", "biscotte"),
+            ("Tipiki", "tipiki"),
+            ("burrata", "burrata"),
+            ("pesto rosso", "pesto rosso"),
+            ("fajitas", "fajita"),
         ] {
             let resolved = catalog
                 .resolve(written)
@@ -249,6 +255,8 @@ ingredients:
             ("pâte feuilletée", "pâte feuilletée"),
             ("salade", "salade"),
             ("fromage râpé", "fromage râpé"),
+            ("pesto", "pesto"),
+            ("pesto rosso", "pesto rosso"),
         ] {
             assert_eq!(
                 catalog.resolve(written).map(|found| found.name.as_str()),
