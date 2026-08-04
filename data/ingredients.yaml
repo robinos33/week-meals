@@ -445,6 +445,10 @@ ingredients:
     category: cremerie
     avg_weight_g: 125
     countable: true
+  - name: burrata
+    category: cremerie
+    avg_weight_g: 125
+    countable: true
   - name: chèvre
     category: cremerie
     unit: g
@@ -574,6 +578,18 @@ ingredients:
     category: epicerie-salee
     unit: ml
     aliases: [velouté]
+  # Marque de conserves de légumes (petits pois, maïs…) : sans autre précision
+  # sur l'étiquette, on ne sait pas laquelle — donc pas de fusion forcée avec
+  # un légume générique existant.
+  - name: cassegrain
+    category: epicerie-salee
+    unit: piece
+    countable: true
+  - name: fajita
+    category: epicerie-salee
+    avg_weight_g: 30
+    countable: true
+    aliases: [fajitas, tortilla, tortillas]
 
   # ---------------------------------------------------------- Épicerie sucrée
   - name: farine
@@ -626,6 +642,11 @@ ingredients:
     category: epicerie-sucree
     unit: g
     aliases: [gâteau sec, sablé]
+  - name: biscotte
+    category: epicerie-sucree
+    avg_weight_g: 300
+    countable: true
+    aliases: [biscottes]
   - name: compote
     category: epicerie-sucree
     unit: g
@@ -711,6 +732,18 @@ ingredients:
     category: condiments
     unit: g
     aliases: [piment d'espelette, piment de cayenne]
+  # Marque de condiments et épices : catégorisée sans être rabattue sur un
+  # produit générique, faute de savoir laquelle est achetée.
+  - name: tipiki
+    category: condiments
+    unit: g
+  - name: pesto
+    category: condiments
+    unit: ml
+  # Le rosso (tomates séchées) n'est pas le pesto au basilic : un autre pot.
+  - name: pesto rosso
+    category: condiments
+    unit: ml
 
   # ----------------------------------------------------------------- Boissons
   - name: eau
