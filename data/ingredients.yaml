@@ -481,7 +481,7 @@ ingredients:
     category: cremerie
     avg_weight_g: 55
     countable: true
-    aliases: [galette de blé noir, crêpe de sarrasin]
+    aliases: [galette bretonne, galette de blé noir, crêpe de sarrasin]
   # Produits repère de la famille : un lait et un yaourt précis, achetés
   # toujours identiques — pas la peine de les rabattre sur le générique.
   - name: lait emma
@@ -618,14 +618,14 @@ ingredients:
   - name: riz cantonais
     category: epicerie-salee
     unit: g
-  # Le biscuit sablé « galette » de la famille n'est pas la crêpe de sarrasin
-  # du même nom (« galette de sarrasin », rayon crèmerie) : un homonyme, un
-  # autre produit.
+  # « Galette » tout court, saisi tel quel dans la liste de la famille, n'est
+  # pas la « galette bretonne » du dictionnaire (alias de la crêpe de
+  # sarrasin, rayon crèmerie) : sans le qualificatif, c'est un autre produit,
+  # donc sa propre entrée plutôt qu'un alias qui entrerait en collision.
   - name: galette
     category: epicerie-salee
     unit: piece
     countable: true
-    aliases: [galette bretonne]
 
   # ---------------------------------------------------------- Épicerie sucrée
   - name: farine
