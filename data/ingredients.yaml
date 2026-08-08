@@ -481,7 +481,28 @@ ingredients:
     category: cremerie
     avg_weight_g: 55
     countable: true
-    aliases: [galette bretonne, galette de blé noir, crêpe de sarrasin]
+    aliases: [galette de blé noir, crêpe de sarrasin]
+  # Produits repère de la famille : un lait et un yaourt précis, achetés
+  # toujours identiques — pas la peine de les rabattre sur le générique.
+  - name: lait emma
+    category: cremerie
+    unit: ml
+  - name: yaourt emma
+    category: cremerie
+    avg_weight_g: 125
+    countable: true
+  - name: kiri gressin
+    category: cremerie
+    unit: piece
+    countable: true
+  - name: emmental en tranche
+    category: cremerie
+    unit: g
+    aliases: [emmental tranches]
+  - name: st môret
+    category: cremerie
+    unit: g
+    aliases: [saint môret]
 
   # ----------------------------------------------------------------- Surgelés
   - name: légumes surgelés
@@ -590,6 +611,21 @@ ingredients:
     avg_weight_g: 30
     countable: true
     aliases: [fajitas, tortilla, tortillas]
+  - name: nems
+    category: epicerie-salee
+    unit: piece
+    countable: true
+  - name: riz cantonais
+    category: epicerie-salee
+    unit: g
+  # Le biscuit sablé « galette » de la famille n'est pas la crêpe de sarrasin
+  # du même nom (« galette de sarrasin », rayon crèmerie) : un homonyme, un
+  # autre produit.
+  - name: galette
+    category: epicerie-salee
+    unit: piece
+    countable: true
+    aliases: [galette bretonne]
 
   # ---------------------------------------------------------- Épicerie sucrée
   - name: farine
@@ -737,6 +773,11 @@ ingredients:
   - name: tipiki
     category: condiments
     unit: g
+  # Le sachet d'épices n'est pas la tortilla : deux courses distinctes.
+  - name: épices fajitas
+    category: condiments
+    unit: piece
+    countable: true
   - name: pesto
     category: condiments
     unit: ml
