@@ -462,6 +462,12 @@ ingredients:
   - name: ricotta
     category: cremerie
     unit: g
+  # Fromage de brebis : un lait différent, donc un produit à part du chèvre
+  # et du comté.
+  - name: brebis
+    category: cremerie
+    unit: g
+    aliases: [fromage de brebis]
   # Les pâtes à dérouler sont au rayon frais, pas en épicerie.
   - name: pâte feuilletée
     category: cremerie
@@ -492,6 +498,12 @@ ingredients:
     avg_weight_g: 125
     countable: true
   - name: kiri gressin
+    category: cremerie
+    unit: piece
+    countable: true
+  # Le format « goûter » (portions nature) n'est pas le gressin : un autre
+  # produit de la même marque.
+  - name: kiri goûter
     category: cremerie
     unit: piece
     countable: true
@@ -674,6 +686,12 @@ ingredients:
     category: epicerie-sucree
     unit: g
     aliases: [muesli, flocons d'avoine]
+  # Produit repère de la famille, acheté toujours identique : la boîte n'est
+  # pas rabattue sur les « céréales » génériques.
+  - name: choco prince multicéréales vert
+    category: epicerie-sucree
+    unit: piece
+    countable: true
   - name: biscuit
     category: epicerie-sucree
     unit: g
@@ -807,6 +825,11 @@ ingredients:
     category: boissons
     unit: ml
   - name: jus de pomme
+    category: boissons
+    unit: ml
+  # Boisson aux fruits, pas un jus pur : le parfum tropical est un produit
+  # précis, pas rabattu sur le générique.
+  - name: oasis tropical
     category: boissons
     unit: ml
   - name: soda

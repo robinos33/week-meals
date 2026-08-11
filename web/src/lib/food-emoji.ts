@@ -145,12 +145,15 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["chevre", "🧀"],
   ["comte", "🧀"],
   ["burrata", "🧀"],
+  ["brebis", "🧀"],
+  ["kiri", "🧀"],
   ["beurre", "🧈"],
   ["yaourt", "🥣"],
 
   // Sucré & divers.
   ["miel", "🍯"],
   ["chocolat", "🍫"],
+  ["choco prince", "🥣"],
   ["biscuit", "🍪"],
   ["biscotte", "🍞"],
   ["cookie", "🍪"],
@@ -177,6 +180,7 @@ const RULES: ReadonlyArray<readonly [string, string]> = [
   ["vin", "🍷"],
   ["biere", "🍺"],
   ["jus", "🧃"],
+  ["oasis", "🧃"],
   ["soda", "🥤"],
   ["eau", "💧"],
 

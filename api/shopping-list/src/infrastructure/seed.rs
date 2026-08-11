@@ -231,6 +231,10 @@ ingredients:
             ("burrata", "burrata"),
             ("pesto rosso", "pesto rosso"),
             ("fajitas", "fajita"),
+            ("Brebis", "brebis"),
+            ("Kiri goûter", "kiri goûter"),
+            ("Choco prince multicéréales vert", "choco prince multicéréales vert"),
+            ("Oasis tropical", "oasis tropical"),
         ] {
             let resolved = catalog
                 .resolve(written)
@@ -257,6 +261,8 @@ ingredients:
             ("fromage râpé", "fromage râpé"),
             ("pesto", "pesto"),
             ("pesto rosso", "pesto rosso"),
+            ("kiri gressin", "kiri gressin"),
+            ("céréales", "céréales"),
         ] {
             assert_eq!(
                 catalog.resolve(written).map(|found| found.name.as_str()),
