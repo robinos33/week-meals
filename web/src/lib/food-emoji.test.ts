@@ -77,6 +77,13 @@ describe("foodEmoji", () => {
     expect(foodEmoji("Cassegrain")).toBe("🥫");
   });
 
+  it("reconnaît les derniers produits tombés en Autres", () => {
+    expect(foodEmoji("Brebis")).toBe("🧀");
+    expect(foodEmoji("Kiri goûter")).toBe("🧀");
+    expect(foodEmoji("Choco prince multicéréales vert")).toBe("🥣");
+    expect(foodEmoji("Oasis tropical")).toBe("🧃");
+  });
+
   it("renvoie null pour un aliment inconnu", () => {
     expect(foodEmoji("quinoa")).toBeNull();
     expect(foodEmoji("")).toBeNull();
