@@ -300,6 +300,10 @@ ingredients:
     category: fruits
     avg_weight_g: 1000
     countable: true
+  - name: pastèque
+    category: fruits
+    avg_weight_g: 5000
+    countable: true
 
   # -------------------------------------------------------------- Boulangerie
   - name: pain
@@ -354,6 +358,11 @@ ingredients:
     avg_weight_g: 100
     countable: true
     aliases: [chipolata, merguez]
+  - name: cordon bleu
+    category: boucherie
+    avg_weight_g: 120
+    countable: true
+    aliases: [cordon bleu de poulet, cordon bleu de dinde]
 
   # ------------------------------------------------- Charcuterie et traiteur
   - name: lardon
@@ -380,6 +389,15 @@ ingredients:
     category: charcuterie
     unit: g
     aliases: [hummus, houmous de pois chiche]
+  - name: jambon de bayonne
+    category: charcuterie
+    avg_weight_g: 50
+    countable: true
+  # Vendues râpées et prêtes à l'emploi au rayon traiteur, pas la carotte
+  # crue du rayon légumes.
+  - name: carottes râpées
+    category: charcuterie
+    unit: g
 
   # ------------------------------------------------------------ Poissonnerie
   - name: saumon
@@ -408,6 +426,9 @@ ingredients:
     category: poissonnerie
     unit: g
     aliases: [filet de limande, limande sole]
+  - name: lieu noir
+    category: poissonnerie
+    unit: g
 
   # ----------------------------------------------------------------- Crèmerie
   - name: œuf
@@ -503,6 +524,18 @@ ingredients:
     category: cremerie
     unit: g
     aliases: [saint môret]
+  # Le bloc entier, distinct du râpé et des tranches — chacun sa ligne.
+  - name: emmental
+    category: cremerie
+    unit: g
+  - name: brebis
+    category: cremerie
+    unit: g
+    aliases: [fromage de brebis, tomme de brebis]
+  - name: kiri gouter
+    category: cremerie
+    unit: piece
+    countable: true
 
   # ----------------------------------------------------------------- Surgelés
   - name: légumes surgelés
@@ -696,6 +729,10 @@ ingredients:
     category: epicerie-sucree
     unit: g
     aliases: [infusion, tisane]
+  - name: choco prince multicereales vert
+    category: epicerie-sucree
+    unit: piece
+    countable: true
 
   # ------------------------------------------------------- Condiments, épices
   - name: sel
@@ -816,6 +853,10 @@ ingredients:
   - name: sirop
     category: boissons
     unit: ml
+  - name: oasis tropical
+    category: boissons
+    unit: piece
+    countable: true
 
   # -------------------------------------------------------- Hygiène et beauté
   - name: dentifrice
@@ -916,6 +957,15 @@ ingredients:
     category: entretien
     unit: ml
     aliases: [eau de javel]
+  - name: anti-calcaire
+    category: entretien
+    avg_weight_g: 750
+    countable: true
+    aliases: [calgon]
+  - name: désodorisant textile
+    category: entretien
+    unit: ml
+    aliases: [febreze]
 
   # --------------------------------------------------------- Maison et bazar
   - name: papier aluminium
