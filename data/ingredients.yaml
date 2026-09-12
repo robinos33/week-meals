@@ -373,11 +373,11 @@ ingredients:
     category: charcuterie
     unit: g
     aliases: [lardons fumés, poitrine fumée]
-  - name: jambon
+  - name: jambon blanc
     category: charcuterie
     avg_weight_g: 50
     countable: true
-    aliases: [tranche de jambon, jambon blanc]
+    aliases: [tranche de jambon]
   - name: saucisson
     category: charcuterie
     unit: g
@@ -397,6 +397,7 @@ ingredients:
     category: charcuterie
     avg_weight_g: 50
     countable: true
+    aliases: [jambon cru]
   # Vendues râpées et prêtes à l'emploi au rayon traiteur, pas la carotte
   # crue du rayon légumes.
   - name: carottes râpées
