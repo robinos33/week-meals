@@ -337,7 +337,11 @@ ingredients:
   - name: bœuf haché
     category: boucherie
     unit: g
-    aliases: [steak haché, viande hachée]
+    aliases: [viande hachée]
+  - name: steak haché
+    category: boucherie
+    avg_weight_g: 125
+    countable: true
   - name: bœuf
     category: boucherie
     unit: g
