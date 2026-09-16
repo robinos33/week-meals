@@ -77,6 +77,11 @@ struct Aggregate<'a> {
     volume_ml: f64,
     /// Comptage cumulé, en pièces.
     pieces: f64,
+    /// Comptage cumulé dans une unité de conditionnement (paquet, boîte…),
+    /// indexé par unité exacte : contrairement aux pièces, un paquet et une
+    /// boîte ne sont pas convertibles l'un vers l'autre (cf.
+    /// [`kernel::Unit::is_summable_with`]), donc chacun garde sa propre case.
+    packaging: std::collections::HashMap<Unit, f64>,
 }
 
 impl<'a> Aggregate<'a> {
@@ -87,6 +92,7 @@ impl<'a> Aggregate<'a> {
             mass_g: 0.0,
             volume_ml: 0.0,
             pieces: 0.0,
+            packaging: std::collections::HashMap::new(),
         }
     }
 
@@ -94,7 +100,12 @@ impl<'a> Aggregate<'a> {
         match quantity.dimension() {
             Dimension::Mass => self.mass_g += quantity.in_base(),
             Dimension::Volume => self.volume_ml += quantity.in_base(),
-            Dimension::Count => self.pieces += quantity.in_base(),
+            Dimension::Count if quantity.unit() == Unit::Piece => {
+                self.pieces += quantity.in_base();
+            }
+            Dimension::Count => {
+                *self.packaging.entry(quantity.unit()).or_insert(0.0) += quantity.in_base();
+            }
         }
     }
 }
@@ -187,10 +198,24 @@ fn emit(items: &mut Vec<PurchaseItem>, aggregate: &Aggregate) {
     // en volume — même chemin que pour un vrac liquide.
     if aggregate.volume_ml > 0.0 {
         items.push(PurchaseItem {
-            name,
+            name: name.clone(),
             quantity: base_quantity(aggregate.volume_ml, Unit::Ml),
-            category,
+            category: category.clone(),
         });
+    }
+
+    // Conditionnements (paquet, boîte…) : jamais convertis en grammes, une
+    // ligne par unité exacte, triée pour une sortie déterministe.
+    let mut packaging: Vec<_> = aggregate.packaging.iter().collect();
+    packaging.sort_by_key(|(unit, _)| unit.as_str());
+    for (&unit, &amount) in packaging {
+        if amount > 0.0 {
+            items.push(PurchaseItem {
+                name: name.clone(),
+                quantity: base_quantity(amount, unit),
+                category: category.clone(),
+            });
+        }
     }
 }
 
@@ -481,6 +506,35 @@ mod tests {
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].quantity, g(100.0));
         assert_eq!(items[1].quantity, ml(200.0));
+    }
+
+    #[test]
+    fn packaging_units_stay_separate_from_pieces_and_from_each_other() {
+        // Un paquet et une boîte de riz (non référencé) : deux lignes, jamais
+        // fondues entre elles ni avec un comptage en pièces.
+        let planned = [
+            PlannedIngredient::new("riz", Quantity::new(2.0, Unit::Paquet).unwrap()),
+            PlannedIngredient::new("riz", Quantity::new(1.0, Unit::Boite).unwrap()),
+        ];
+        let items = aggregate_purchases(&planned, &ReferenceCatalog::new());
+        assert_eq!(items.len(), 2);
+        assert_eq!(
+            items[0].quantity,
+            Quantity::new(1.0, Unit::Boite).unwrap(),
+            "tri déterministe par nom d'unité : boite avant paquet"
+        );
+        assert_eq!(items[1].quantity, Quantity::new(2.0, Unit::Paquet).unwrap());
+    }
+
+    #[test]
+    fn same_packaging_unit_is_cumulated_across_recipes() {
+        let planned = [
+            PlannedIngredient::new("riz", Quantity::new(2.0, Unit::Paquet).unwrap()),
+            PlannedIngredient::new("riz", Quantity::new(3.0, Unit::Paquet).unwrap()),
+        ];
+        let items = aggregate_purchases(&planned, &ReferenceCatalog::new());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, Quantity::new(5.0, Unit::Paquet).unwrap());
     }
 
     #[test]

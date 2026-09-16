@@ -20,7 +20,21 @@ import { canonicalKey } from "../lib/ingredient-match";
 import { formatAmount, formatDecimal } from "../lib/quantity";
 
 /** Unités acceptées par l'API (mêmes que les recettes). */
-export const UNITS = ["g", "kg", "ml", "l", "piece"] as const;
+export const UNITS = [
+  "g",
+  "kg",
+  "ml",
+  "l",
+  "piece",
+  "paquet",
+  "boite",
+  "sachet",
+  "bouteille",
+  "pot",
+  "botte",
+  "barquette",
+  "tranche",
+] as const;
 export type Unit = (typeof UNITS)[number];
 
 /** Libellé affiché d'une unité. */
@@ -30,6 +44,14 @@ export const UNIT_LABELS: Record<Unit, string> = {
   ml: "mL",
   l: "L",
   piece: "pièce(s)",
+  paquet: "paquet(s)",
+  boite: "boîte(s)",
+  sachet: "sachet(s)",
+  bouteille: "bouteille(s)",
+  pot: "pot(s)",
+  botte: "botte(s)",
+  barquette: "barquette(s)",
+  tranche: "tranche(s)",
 };
 
 /** Une ligne de la liste. */
@@ -358,9 +380,9 @@ export function sameCombo(
 
 /** Pas d'incrément adapté à l'unité pour le sélecteur de quantité. */
 export function quantityStep(unit: Unit): number {
-  if (unit === "piece") return 1;
   if (unit === "kg" || unit === "l") return 0.5;
-  return 50; // g, mL
+  if (unit === "g" || unit === "ml") return 50;
+  return 1; // pièce et conditionnements (paquet, boîte…) : comptage entier
 }
 
 /**

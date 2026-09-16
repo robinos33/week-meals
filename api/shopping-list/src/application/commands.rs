@@ -190,9 +190,11 @@ impl<'a> AddItemHandler<'a> {
     /// Exécute l'ajout. Ne renvoie jamais d'erreur.
     ///
     /// Additionne plutôt que de dupliquer : si un article **non coché** du même
-    /// ingrédient et de **même dimension** existe déjà, la quantité est cumulée
-    /// sur cette ligne (dans son unité) — jamais deux fois le même ingrédient
-    /// dans la liste. À défaut, nouvelle ligne manuelle.
+    /// ingrédient existe déjà dans une unité **cumulable** avec la nouvelle
+    /// (masse ou volume compatibles, ou comptage dans l'unité exacte — un
+    /// paquet et une boîte ne se cumulent pas), la quantité est ajoutée sur
+    /// cette ligne (dans son unité) — jamais deux fois le même ingrédient dans
+    /// la liste. À défaut, nouvelle ligne manuelle.
     ///
     /// Le rapprochement passe par le dictionnaire, pas par l'égalité des
     /// chaînes : taper « tomates » cumule sur la ligne « tomate » générée
@@ -226,7 +228,7 @@ impl<'a> AddItemHandler<'a> {
         let key = catalog.group_key(&name);
         let mergeable = existing.into_iter().find(|item| {
             !item.checked
-                && item.quantity.dimension() == quantity.dimension()
+                && item.quantity.unit().is_summable_with(quantity.unit())
                 && catalog.group_key(&item.name) == key
         });
 
@@ -738,6 +740,32 @@ mod tests {
         let items = repo.list(h).await.unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].quantity, Quantity::new(1000.0, Unit::G).unwrap());
+    }
+
+    #[tokio::test]
+    async fn packaging_units_do_not_merge_with_each_other_or_with_pieces() {
+        // Un paquet, une boîte et une pièce du même ingrédient ne sont pas
+        // interchangeables : chacun garde sa ligne.
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "riz", 2.0, Unit::Paquet).await;
+        add(&repo, h, "riz", 1.0, Unit::Boite).await;
+        add(&repo, h, "riz", 3.0, Unit::Piece).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 3, "trois lignes distinctes, pas de fusion");
+    }
+
+    #[tokio::test]
+    async fn same_packaging_unit_still_sums() {
+        let repo = InMemoryShoppingList::default();
+        let h = household();
+        add(&repo, h, "riz", 2.0, Unit::Paquet).await;
+        add(&repo, h, "riz", 1.0, Unit::Paquet).await;
+
+        let items = repo.list(h).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, Quantity::new(3.0, Unit::Paquet).unwrap());
     }
 
     #[tokio::test]

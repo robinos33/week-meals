@@ -41,6 +41,22 @@ pub enum Unit {
     L,
     /// Pièce (unité comptable : œuf, gousse d'ail…).
     Piece,
+    /// Paquet (pâtes, biscuits, riz…).
+    Paquet,
+    /// Boîte (conserve, céréales…).
+    Boite,
+    /// Sachet (soupe, levure…).
+    Sachet,
+    /// Bouteille (huile, jus…).
+    Bouteille,
+    /// Pot (yaourt, confiture, moutarde…).
+    Pot,
+    /// Botte (radis, persil, asperges…).
+    Botte,
+    /// Barquette (fraises, champignons…).
+    Barquette,
+    /// Tranche (jambon, fromage…).
+    Tranche,
 }
 
 impl Unit {
@@ -53,6 +69,14 @@ impl Unit {
             Unit::Ml => "ml",
             Unit::L => "l",
             Unit::Piece => "piece",
+            Unit::Paquet => "paquet",
+            Unit::Boite => "boite",
+            Unit::Sachet => "sachet",
+            Unit::Bouteille => "bouteille",
+            Unit::Pot => "pot",
+            Unit::Botte => "botte",
+            Unit::Barquette => "barquette",
+            Unit::Tranche => "tranche",
         }
     }
 
@@ -62,17 +86,27 @@ impl Unit {
         match self {
             Unit::G | Unit::Kg => Dimension::Mass,
             Unit::Ml | Unit::L => Dimension::Volume,
-            Unit::Piece => Dimension::Count,
+            Unit::Piece
+            | Unit::Paquet
+            | Unit::Boite
+            | Unit::Sachet
+            | Unit::Bouteille
+            | Unit::Pot
+            | Unit::Botte
+            | Unit::Barquette
+            | Unit::Tranche => Dimension::Count,
         }
     }
 
-    /// Unité de base de la dimension de `self` (gramme, millilitre ou pièce).
+    /// Unité de base de la dimension de `self` (gramme, millilitre ou
+    /// elle-même pour un comptage : les unités de comptage ne se convertissent
+    /// pas entre elles, cf. [`Unit::is_summable_with`]).
     #[must_use]
     pub fn base(self) -> Unit {
         match self.dimension() {
             Dimension::Mass => Unit::G,
             Dimension::Volume => Unit::Ml,
-            Dimension::Count => Unit::Piece,
+            Dimension::Count => self,
         }
     }
 
@@ -82,8 +116,33 @@ impl Unit {
     #[must_use]
     pub fn base_factor(self) -> f64 {
         match self {
-            Unit::G | Unit::Ml | Unit::Piece => 1.0,
             Unit::Kg | Unit::L => 1000.0,
+            Unit::G
+            | Unit::Ml
+            | Unit::Piece
+            | Unit::Paquet
+            | Unit::Boite
+            | Unit::Sachet
+            | Unit::Bouteille
+            | Unit::Pot
+            | Unit::Botte
+            | Unit::Barquette
+            | Unit::Tranche => 1.0,
+        }
+    }
+
+    /// Deux unités se cumulent-elles nativement (mêmes lignes, même « case ») ?
+    ///
+    /// Les unités continues (masse, volume) se convertissent librement au sein
+    /// de leur dimension (`500 g + 0,5 kg`). Un comptage n'a en revanche de
+    /// sens que pour l'unité exacte : un paquet et une boîte ne sont pas
+    /// interchangeables, contrairement à `Piece`, qui reste seule dans son cas
+    /// d'usage historique (œufs, gousses d'ail…).
+    #[must_use]
+    pub fn is_summable_with(self, other: Unit) -> bool {
+        match self.dimension() {
+            Dimension::Count => self == other,
+            Dimension::Mass | Dimension::Volume => self.dimension() == other.dimension(),
         }
     }
 }
@@ -210,6 +269,46 @@ mod tests {
         assert_eq!(Unit::Kg.base(), Unit::G);
         assert_eq!(Unit::L.base(), Unit::Ml);
         assert_eq!(Unit::Piece.base(), Unit::Piece);
+        assert_eq!(Unit::Boite.base(), Unit::Boite);
+    }
+
+    #[test]
+    fn packaging_units_have_their_own_canonical_spelling_and_dimension() {
+        assert_eq!(Unit::Paquet.as_str(), "paquet");
+        assert_eq!(Unit::Boite.as_str(), "boite");
+        assert_eq!(Unit::Sachet.as_str(), "sachet");
+        assert_eq!(Unit::Bouteille.as_str(), "bouteille");
+        assert_eq!(Unit::Pot.as_str(), "pot");
+        assert_eq!(Unit::Botte.as_str(), "botte");
+        assert_eq!(Unit::Barquette.as_str(), "barquette");
+        assert_eq!(Unit::Tranche.as_str(), "tranche");
+        for unit in [
+            Unit::Paquet,
+            Unit::Boite,
+            Unit::Sachet,
+            Unit::Bouteille,
+            Unit::Pot,
+            Unit::Botte,
+            Unit::Barquette,
+            Unit::Tranche,
+        ] {
+            assert_eq!(unit.dimension(), Dimension::Count);
+            assert!((unit.base_factor() - 1.0).abs() < f64::EPSILON);
+        }
+    }
+
+    #[test]
+    fn mass_and_volume_units_are_summable_across_their_dimension() {
+        assert!(Unit::G.is_summable_with(Unit::Kg));
+        assert!(Unit::L.is_summable_with(Unit::Ml));
+    }
+
+    #[test]
+    fn count_units_are_only_summable_with_the_exact_same_unit() {
+        assert!(Unit::Piece.is_summable_with(Unit::Piece));
+        assert!(Unit::Boite.is_summable_with(Unit::Boite));
+        assert!(!Unit::Boite.is_summable_with(Unit::Paquet));
+        assert!(!Unit::Piece.is_summable_with(Unit::Boite));
     }
 
     #[test]

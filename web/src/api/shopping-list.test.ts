@@ -8,6 +8,8 @@ import {
   formatQuantity,
   quantityStep,
   sameCombo,
+  UNIT_LABELS,
+  UNITS,
   type ShoppingItem,
 } from "./shopping-list";
 
@@ -65,6 +67,19 @@ describe("quantityStep", () => {
     expect(quantityStep("ml")).toBe(50);
     expect(quantityStep("kg")).toBe(0.5);
     expect(quantityStep("l")).toBe(0.5);
+  });
+
+  it("compte les conditionnements à l'unité, comme les pièces", () => {
+    expect(quantityStep("paquet")).toBe(1);
+    expect(quantityStep("boite")).toBe(1);
+  });
+});
+
+describe("UNIT_LABELS", () => {
+  it("a un libellé pour chaque unité", () => {
+    for (const unit of UNITS) {
+      expect(UNIT_LABELS[unit]).toBeTruthy();
+    }
   });
 });
 
