@@ -21,6 +21,14 @@ describe("canonicalKey", () => {
     expect(canonicalKey("riz")).toBe("riz");
     expect(canonicalKey("ail")).toBe("ail");
   });
+
+  it("retire le « (s) » de pluriel parenthésé", () => {
+    // Une saisie qui reprend la convention d'affichage de l'appli
+    // (« pièce(s) ») ne doit pas laisser de jeton résiduel isolé.
+    expect(canonicalKey("Brocoli(s)")).toBe("brocoli");
+    expect(canonicalKey("Œuf(s)")).toBe(canonicalKey("Œuf"));
+    expect(canonicalKey("Pâte(s) feuilletée(s)")).toBe("pate feuilletee");
+  });
 });
 
 describe("coreKey", () => {
