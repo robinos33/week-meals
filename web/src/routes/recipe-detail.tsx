@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import {
+  COUNT_UNITS,
   UNITS,
   photoFocusPosition,
   totalTime,
@@ -17,9 +18,12 @@ import "./screens.css";
  * décimal pour masses et volumes.
  */
 function quantityLabel(ingredient: Ingredient, factor: number): string {
-  const unit = UNITS.find((u) => u.value === ingredient.unit)?.label ?? ingredient.unit;
+  const unit =
+    UNITS.find((u) => u.value === ingredient.unit)?.label ?? ingredient.unit;
   const scaled = ingredient.amount * factor;
-  const amount = ingredient.unit === "piece" ? formatAmount(scaled) : formatDecimal(scaled);
+  const amount = COUNT_UNITS.has(ingredient.unit)
+    ? formatAmount(scaled)
+    : formatDecimal(scaled);
   return `${amount} ${unit}`;
 }
 
@@ -68,14 +72,22 @@ export function RecipeDetailScreen() {
         <Link to="/recipes" className="link-back">
           ← Recettes
         </Link>
-        <Link to="/recipes/$recipeId/edit" params={{ recipeId }} className="btn">
+        <Link
+          to="/recipes/$recipeId/edit"
+          params={{ recipeId }}
+          className="btn"
+        >
           Modifier
         </Link>
       </div>
 
       <div className="recipe-detail__photo">
         {recipe.photo ? (
-          <img src={recipe.photo} alt="" style={{ objectPosition: photoFocusPosition(recipe) }} />
+          <img
+            src={recipe.photo}
+            alt=""
+            style={{ objectPosition: photoFocusPosition(recipe) }}
+          />
         ) : (
           <span aria-hidden="true">🍽️</span>
         )}
@@ -85,15 +97,17 @@ export function RecipeDetailScreen() {
       <p className="recipe-detail__meta muted">
         {time && <span>⏱️ {time}</span>}
         {recipe.cooked_count > 0 && (
-          <span>
-            🍳 Cuisiné {recipe.cooked_count} fois
-          </span>
+          <span>🍳 Cuisiné {recipe.cooked_count} fois</span>
         )}
       </p>
 
       <div className="recipe-detail__section-head">
         <h2 className="recipe-detail__section">Ingrédients</h2>
-        <div className="servings-picker" role="group" aria-label="Nombre de personnes">
+        <div
+          className="servings-picker"
+          role="group"
+          aria-label="Nombre de personnes"
+        >
           <button
             type="button"
             className="stepper__btn"
@@ -120,7 +134,9 @@ export function RecipeDetailScreen() {
         <ul className="ingredient-list">
           {recipe.ingredients.map((ingredient, index) => (
             <li key={index}>
-              <span className="ingredient-list__qty">{quantityLabel(ingredient, factor)}</span>
+              <span className="ingredient-list__qty">
+                {quantityLabel(ingredient, factor)}
+              </span>
               <span>{ingredient.name}</span>
             </li>
           ))}
@@ -145,7 +161,11 @@ export function RecipeDetailScreen() {
           <div className="confirm">
             <p>Supprimer « {recipe.title} » ? Cette action est définitive.</p>
             <div className="confirm__actions">
-              <button className="btn" type="button" onClick={() => setConfirming(false)}>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setConfirming(false)}
+              >
                 Annuler
               </button>
               <button
@@ -164,7 +184,11 @@ export function RecipeDetailScreen() {
             )}
           </div>
         ) : (
-          <button className="btn btn--danger-ghost" type="button" onClick={() => setConfirming(true)}>
+          <button
+            className="btn btn--danger-ghost"
+            type="button"
+            onClick={() => setConfirming(true)}
+          >
             Supprimer la recette
           </button>
         )}

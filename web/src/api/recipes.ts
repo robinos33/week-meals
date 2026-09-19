@@ -10,7 +10,20 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
 
 /** Unités reconnues par l'API (`kernel::Unit`, sérialisées en minuscules). */
-export type Unit = "g" | "kg" | "ml" | "l" | "piece";
+export type Unit =
+  | "g"
+  | "kg"
+  | "ml"
+  | "l"
+  | "piece"
+  | "paquet"
+  | "boite"
+  | "sachet"
+  | "bouteille"
+  | "pot"
+  | "botte"
+  | "barquette"
+  | "tranche";
 
 /** Unités proposées dans les formulaires, avec leur libellé lisible. */
 export const UNITS: ReadonlyArray<{ value: Unit; label: string }> = [
@@ -19,7 +32,33 @@ export const UNITS: ReadonlyArray<{ value: Unit; label: string }> = [
   { value: "ml", label: "mL" },
   { value: "l", label: "L" },
   { value: "piece", label: "pièce(s)" },
+  { value: "paquet", label: "paquet(s)" },
+  { value: "boite", label: "boîte(s)" },
+  { value: "sachet", label: "sachet(s)" },
+  { value: "bouteille", label: "bouteille(s)" },
+  { value: "pot", label: "pot(s)" },
+  { value: "botte", label: "botte(s)" },
+  { value: "barquette", label: "barquette(s)" },
+  { value: "tranche", label: "tranche(s)" },
 ];
+
+/**
+ * Unités de comptage (dimension `Count` côté `kernel`) : quantités entières,
+ * affichées en fractions plutôt qu'en décimal (cf. `formatAmount`).
+ * `piece` et les unités de conditionnement (paquet, boîte…) partagent ce
+ * comportement, contrairement aux masses/volumes.
+ */
+export const COUNT_UNITS: ReadonlySet<Unit> = new Set([
+  "piece",
+  "paquet",
+  "boite",
+  "sachet",
+  "bouteille",
+  "pot",
+  "botte",
+  "barquette",
+  "tranche",
+]);
 
 /** Ingrédient d'une recette (quantité + unité). */
 export interface Ingredient {
@@ -93,9 +132,12 @@ interface PhotoUpload {
  * publique à stocker dans la recette (champ `photo`).
  */
 export async function uploadPhoto(file: File): Promise<string> {
-  const { upload_url, public_url } = await api.post<PhotoUpload>("/recipes/photos/presign", {
-    content_type: file.type,
-  });
+  const { upload_url, public_url } = await api.post<PhotoUpload>(
+    "/recipes/photos/presign",
+    {
+      content_type: file.type,
+    },
+  );
   // PUT direct au stockage : pas de cookie, et le `Content-Type` doit
   // correspondre pour que l'objet soit servi avec le bon type.
   const response = await fetch(upload_url, {
@@ -179,7 +221,8 @@ export function useScrapeRecipe() {
 export function useUpdateRecipe(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: RecipeInput) => api.put<RecipeView>(`/recipes/${id}`, input),
+    mutationFn: (input: RecipeInput) =>
+      api.put<RecipeView>(`/recipes/${id}`, input),
     onSuccess: (recipe) => {
       queryClient.setQueryData(detailKey(id), recipe);
       return invalidateLists(queryClient);

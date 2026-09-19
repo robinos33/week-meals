@@ -33,6 +33,14 @@ fn parse_unit(raw: &str) -> Result<Unit, RepositoryError> {
         "ml" => Ok(Unit::Ml),
         "l" => Ok(Unit::L),
         "piece" => Ok(Unit::Piece),
+        "paquet" => Ok(Unit::Paquet),
+        "boite" => Ok(Unit::Boite),
+        "sachet" => Ok(Unit::Sachet),
+        "bouteille" => Ok(Unit::Bouteille),
+        "pot" => Ok(Unit::Pot),
+        "botte" => Ok(Unit::Botte),
+        "barquette" => Ok(Unit::Barquette),
+        "tranche" => Ok(Unit::Tranche),
         other => Err(RepositoryError::Backend(format!(
             "unknown stored unit: {other}"
         ))),

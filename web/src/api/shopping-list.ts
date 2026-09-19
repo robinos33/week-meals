@@ -54,6 +54,18 @@ export const UNIT_LABELS: Record<Unit, string> = {
   tranche: "tranche(s)",
 };
 
+/**
+ * Unités de comptage (dimension `Count` côté `kernel`) : quantités entières,
+ * affichées en fractions plutôt qu'en décimal (cf. `formatAmount`). `piece`
+ * et les unités de conditionnement (paquet, boîte…) partagent ce
+ * comportement, contrairement aux masses/volumes.
+ */
+export const COUNT_UNITS: ReadonlySet<Unit> = new Set(
+  UNITS.filter(
+    (unit) => unit !== "g" && unit !== "kg" && unit !== "ml" && unit !== "l",
+  ),
+);
+
 /** Une ligne de la liste. */
 export interface ShoppingItem {
   id: string;
@@ -121,7 +133,8 @@ export function useShoppingListStream(): { live: boolean } {
 
   useEffect(() => {
     const source = eventSource("/shopping-list/stream");
-    const invalidate = () => queryClient.invalidateQueries({ queryKey: LIST_KEY });
+    const invalidate = () =>
+      queryClient.invalidateQueries({ queryKey: LIST_KEY });
 
     source.addEventListener("changed", invalidate);
     source.onopen = () => setLive(true);
@@ -196,7 +209,10 @@ export function applyAdd(items: ShoppingItem[], vars: AddVars): ShoppingItem[] {
 }
 
 /** Applique une édition à la ligne ciblée (champs `undefined` = inchangés). */
-export function applyUpdate(items: ShoppingItem[], vars: UpdateVars): ShoppingItem[] {
+export function applyUpdate(
+  items: ShoppingItem[],
+  vars: UpdateVars,
+): ShoppingItem[] {
   return items.map((item) => {
     if (item.id !== vars.id) return item;
     const next = { ...item };
@@ -240,11 +256,14 @@ function optimistic<V>(
     onMutate: async (vars: V): Promise<Rollback> => {
       await queryClient.cancelQueries({ queryKey: LIST_KEY });
       const previous = queryClient.getQueryData<ShoppingItem[]>(LIST_KEY);
-      queryClient.setQueryData<ShoppingItem[]>(LIST_KEY, (old) => apply(old ?? [], vars));
+      queryClient.setQueryData<ShoppingItem[]>(LIST_KEY, (old) =>
+        apply(old ?? [], vars),
+      );
       return { previous };
     },
     onError: (_error: unknown, _vars: V, context: Rollback | undefined) => {
-      if (context?.previous) queryClient.setQueryData(LIST_KEY, context.previous);
+      if (context?.previous)
+        queryClient.setQueryData(LIST_KEY, context.previous);
     },
     onSettled: () => {
       if (onlineManager.isOnline()) {
@@ -290,7 +309,9 @@ export function configureShoppingListOffline(queryClient: QueryClient): void {
 
 /** Ajoute une ligne à la main (optimiste, rejouée hors-ligne). */
 export function useAddItem() {
-  const mutation = useMutation<ShoppingItem, Error, AddVars>({ mutationKey: ADD_KEY });
+  const mutation = useMutation<ShoppingItem, Error, AddVars>({
+    mutationKey: ADD_KEY,
+  });
   return {
     ...mutation,
     // L'appelant fournit le combo ; l'`id` client stabilise la ligne optimiste.
@@ -301,7 +322,9 @@ export function useAddItem() {
 
 /** Coche ou édite une ligne (optimiste, rejouée hors-ligne). */
 export function useUpdateItem() {
-  return useMutation<ShoppingItem, Error, UpdateVars>({ mutationKey: UPDATE_KEY });
+  return useMutation<ShoppingItem, Error, UpdateVars>({
+    mutationKey: UPDATE_KEY,
+  });
 }
 
 /** Supprime une ligne (optimiste, rejouée hors-ligne). */
@@ -321,7 +344,8 @@ export function useClearChecked() {
 export function useReorderItems() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (ids: string[]) => api.post<void>("/shopping-list/reorder", { ids }),
+    mutationFn: (ids: string[]) =>
+      api.post<void>("/shopping-list/reorder", { ids }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: LIST_KEY }),
   });
 }
@@ -352,11 +376,18 @@ export function useShoppingSync(): { state: SyncState } {
   useShoppingListStream();
 
   const [online, setOnline] = useState(onlineManager.isOnline());
-  useEffect(() => onlineManager.subscribe(() => setOnline(onlineManager.isOnline())), []);
+  useEffect(
+    () => onlineManager.subscribe(() => setOnline(onlineManager.isOnline())),
+    [],
+  );
 
   const pending = useIsMutating({ mutationKey: ["shopping-list"] });
 
-  const state: SyncState = !online ? "offline" : pending > 0 ? "syncing" : "live";
+  const state: SyncState = !online
+    ? "offline"
+    : pending > 0
+      ? "syncing"
+      : "live";
   return { state };
 }
 
@@ -389,7 +420,11 @@ export function quantityStep(unit: Unit): number {
  * Ajuste une quantité d'un cran (±1 pas), en restant strictement positive et
  * sans bavure de flottant (`0.1 + 0.5`…).
  */
-export function adjustQuantity(amount: number, unit: Unit, direction: 1 | -1): number {
+export function adjustQuantity(
+  amount: number,
+  unit: Unit,
+  direction: 1 | -1,
+): number {
   const step = quantityStep(unit);
   const next = amount + direction * step;
   return Math.max(step, Math.round(next * 100) / 100);
@@ -398,6 +433,8 @@ export function adjustQuantity(amount: number, unit: Unit, direction: 1 | -1): n
 /** Quantité formatée pour l'affichage (`3 pièce(s)`, `250 g`). */
 export function formatQuantity(item: ShoppingItem): string {
   // Fractions (½, 1½…) pour les pièces ; décimal pour masses et volumes.
-  const amount = item.unit === "piece" ? formatAmount(item.amount) : formatDecimal(item.amount);
+  const amount = COUNT_UNITS.has(item.unit)
+    ? formatAmount(item.amount)
+    : formatDecimal(item.amount);
   return `${amount} ${UNIT_LABELS[item.unit]}`;
 }
