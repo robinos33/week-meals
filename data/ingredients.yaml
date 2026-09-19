@@ -168,7 +168,7 @@ ingredients:
     category: legumes
     avg_weight_g: 350
     countable: true
-    aliases: [laitue, batavia, sucrine, salade verte, cœur de salade]
+    aliases: [laitue, batavia, sucrine, salade verte, cœur de salade, feuille de salade verte]
   # Une variété nomme une course à part : on ne remplace pas une feuille de
   # chêne par une batavia. D'où son entrée, plutôt qu'un synonyme de « salade ».
   - name: feuille de chêne
@@ -315,6 +315,11 @@ ingredients:
     category: boulangerie
     avg_weight_g: 500
     countable: true
+  - name: pain à hamburger
+    category: boulangerie
+    avg_weight_g: 80
+    countable: true
+    aliases: [pain hamburger, pain pour hamburger, pain burger, buns]
   - name: croissant
     category: boulangerie
     avg_weight_g: 60
@@ -337,7 +342,7 @@ ingredients:
   - name: bœuf haché
     category: boucherie
     unit: g
-    aliases: [viande hachée]
+    aliases: [viande hachée, viande hachée pur bœuf]
   - name: steak haché
     category: boucherie
     avg_weight_g: 125
@@ -408,7 +413,7 @@ ingredients:
   - name: saumon
     category: poissonnerie
     unit: g
-    aliases: [pavé de saumon, filet de saumon, saumon fumé]
+    aliases: [pavé de saumon, filet de saumon, saumon fumé, tranche de saumon fumé]
   - name: cabillaud
     category: poissonnerie
     unit: g
@@ -525,6 +530,10 @@ ingredients:
     category: cremerie
     unit: g
     aliases: [emmental tranches]
+  - name: cheddar
+    category: cremerie
+    unit: g
+    aliases: [cheddar en tranche, tranche de cheddar]
   - name: st môret
     category: cremerie
     unit: g
@@ -561,6 +570,10 @@ ingredients:
     category: surgeles
     avg_weight_g: 400
     countable: true
+    # Saisie sans autre précision, une « pizza » achetée en boîte est
+    # quasi toujours la surgelée — la pâte à pizza (crèmerie) se distingue
+    # d'elle-même par son nom.
+    aliases: [pizza]
   - name: glace
     category: surgeles
     unit: ml
@@ -656,6 +669,11 @@ ingredients:
   - name: riz cantonais
     category: epicerie-salee
     unit: g
+  - name: feuille de nori
+    category: epicerie-salee
+    unit: piece
+    countable: true
+    aliases: [nori, sachets umi, sachet umi]
   # « Galette » tout court, saisi tel quel dans la liste de la famille, n'est
   # pas la « galette bretonne » du dictionnaire (alias de la crêpe de
   # sarrasin, rayon crèmerie) : sans le qualificatif, c'est un autre produit,
@@ -712,6 +730,13 @@ ingredients:
     category: epicerie-sucree
     unit: g
     aliases: [muesli, flocons d'avoine]
+  # Produit repère de la famille, comme « lait emma » et « yaourt emma » : une
+  # boîte précise, achetée toujours identique — pas la peine de la rabattre
+  # sur le générique.
+  - name: céréales emma
+    category: epicerie-sucree
+    unit: piece
+    countable: true
   - name: biscuit
     category: epicerie-sucree
     unit: g
@@ -778,6 +803,7 @@ ingredients:
   - name: cornichon
     category: condiments
     unit: g
+    aliases: [cornichon aigre-doux]
   - name: curry
     category: condiments
     unit: g
@@ -958,6 +984,10 @@ ingredients:
   - name: nettoyant vitres
     category: entretien
     unit: ml
+  - name: nettoyant sol
+    category: entretien
+    unit: ml
+    aliases: [lave-sol, nettoyant sols]
   - name: javel
     category: entretien
     unit: ml

@@ -231,6 +231,23 @@ ingredients:
             ("burrata", "burrata"),
             ("pesto rosso", "pesto rosso"),
             ("fajitas", "fajita"),
+            // Relevé du 2026-09-19 : une deuxième liste réelle, avec son lot
+            // de « (s) » repris de la convention d'affichage de l'appli
+            // elle-même, et de formulations tout court d'un produit acheté
+            // au rayon.
+            ("Brocoli(s)", "brocoli"),
+            ("Œuf(s)", "œuf"),
+            ("Pâte(s) feuilletée(s)", "pâte feuilletée"),
+            ("tranche(s) Saumon fumé", "saumon"),
+            ("viande hachée pur boeuf", "bœuf haché"),
+            ("cornichons aigres-doux", "cornichon"),
+            ("feuilles de salades verte", "salade"),
+            ("Cheddar", "cheddar"),
+            ("pain pour hamburger", "pain à hamburger"),
+            ("Céréales emma", "céréales emma"),
+            ("Sachets umi", "feuille de nori"),
+            ("Lave sols", "nettoyant sol"),
+            ("Pizza", "pizza surgelée"),
         ] {
             let resolved = catalog
                 .resolve(written)

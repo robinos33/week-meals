@@ -72,12 +72,17 @@ const MIN_FUZZY_LEN: usize = 5;
 /// Déplie une chaîne en ASCII minuscule : casse, accents et ligatures.
 ///
 /// La décomposition NFD ne défait pas les ligatures (`œ`, `æ`) : elles sont
-/// remplacées avant, sans quoi « œuf » et « oeuf » resteraient étrangers.
+/// remplacées avant, sans quoi « œuf » et « oeuf » resteraient étrangers. Le
+/// `(s)` — la façon dont l'appli affiche elle-même un pluriel optionnel
+/// (`pièce(s)`) — est retiré avant la découpe en mots : laissé tel quel, il
+/// produirait un jeton `s` isolé, sans rapport avec le produit, qui ferait
+/// échouer le rapprochement d'une saisie qui reprend cette convention.
 fn fold(value: &str) -> String {
     value
         .to_lowercase()
         .replace('œ', "oe")
         .replace('æ', "ae")
+        .replace("(s)", "")
         .nfd()
         .filter(|c| !is_combining_mark(*c))
         .collect()
@@ -206,6 +211,15 @@ mod tests {
         assert_eq!(canonical_key("  Œufs  "), "oeuf");
         assert_eq!(canonical_key("oeufs"), canonical_key("Œufs"));
         assert_eq!(canonical_key("Échalotes"), "echalote");
+    }
+
+    #[test]
+    fn canonical_key_drops_the_parenthesised_plural_mark() {
+        // Une saisie qui reprend la convention d'affichage de l'appli
+        // (« pièce(s) ») ne doit pas laisser de jeton résiduel isolé.
+        assert_eq!(canonical_key("Brocoli(s)"), "brocoli");
+        assert_eq!(canonical_key("Œuf(s)"), canonical_key("Œuf"));
+        assert_eq!(canonical_key("Pâte(s) feuilletée(s)"), "pate feuilletee");
     }
 
     #[test]

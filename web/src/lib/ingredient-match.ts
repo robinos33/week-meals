@@ -77,12 +77,20 @@ const QUALIFIERS = new Set([
   "extra",
 ]);
 
-/** Minuscule sans accent ni ligature (« Œufs » → « oeufs »). */
+/**
+ * Minuscule sans accent ni ligature (« Œufs » → « oeufs »), et sans le
+ * `(s)` — la façon dont l'appli affiche elle-même un pluriel optionnel
+ * (« pièce(s) ») : laissé tel quel, il produirait un jeton `s` isolé, sans
+ * rapport avec le produit, qui ferait échouer le rapprochement d'une saisie
+ * qui reprend cette convention.
+ */
 function fold(value: string): string {
   return value
     .toLowerCase()
     .replace(/œ/g, "oe")
     .replace(/æ/g, "ae")
+    .split("(s)")
+    .join("")
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "");
 }
