@@ -190,11 +190,15 @@
 
 .week-day__slots {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* minmax(0, …) : sans ça, `1fr` vaut `minmax(auto, 1fr)` et un titre sans
+     espace (« Gnocchis/Courgettes/Chorizo ») élargit sa colonne au lieu
+     d'être tronqué. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.6rem;
 }
 
 .slot {
+  min-width: 0;
   min-height: 64px;
   display: flex;
   flex-direction: column;
@@ -275,6 +279,7 @@
   font-weight: 600;
   line-height: 1.15;
   overflow: hidden;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
