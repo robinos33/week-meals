@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { photoFocusPosition } from "../api/recipes";
 import { useGenerateList } from "../api/shopping-list";
@@ -184,7 +191,7 @@ export function WeekScreen() {
                             "🍽️"
                           )}
                         </div>
-                        <span className="slot__title">{recipe?.title ?? "Recette"}</span>
+                        <span className="slot__title">{breakAfterSlashes(recipe?.title ?? "Recette")}</span>
                       </Link>
                       <button
                         className="slot__remove"
@@ -244,6 +251,25 @@ export function WeekScreen() {
       )}
     </section>
   );
+}
+
+/**
+ * Ajoute un point de coupure après chaque « / » : Chrome ne coupe pas un titre
+ * comme « Gnocchis/Courgettes/Chorizo » à cet endroit. Il faut donc l'aider
+ * pour éviter une coupure en plein mot (`overflow-wrap: anywhere` reste le
+ * dernier recours).
+ */
+function breakAfterSlashes(title: string): ReactNode {
+  return title.split("/").map((part, i) => (
+    <Fragment key={i}>
+      {i > 0 && (
+        <>
+          /<wbr />
+        </>
+      )}
+      {part}
+    </Fragment>
+  ));
 }
 
 /**
