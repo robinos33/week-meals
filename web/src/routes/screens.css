@@ -334,7 +334,9 @@
 .sheet {
   width: 100%;
   max-width: 560px;
-  max-height: 80vh;
+  /* 80vh au repos ; clavier ouvert, la backdrop est réduite à la zone visible
+     (cf. useVisualViewportBox) et la feuille en occupe presque toute la hauteur. */
+  max-height: min(80vh, calc(100% - 1rem));
   display: flex;
   flex-direction: column;
   gap: 0.75rem;

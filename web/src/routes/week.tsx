@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { photoFocusPosition } from "../api/recipes";
 import { useGenerateList } from "../api/shopping-list";
@@ -246,6 +246,33 @@ export function WeekScreen() {
   );
 }
 
+/**
+ * Zone réellement visible de l'écran (hors clavier virtuel), en px.
+ *
+ * Sur Chrome Android (≥ 108) et Safari iOS, ouvrir le clavier ne réduit que le
+ * « visual viewport » : un élément `position: fixed; inset: 0` garde la hauteur
+ * de l'écran entier et son bas passe sous le clavier. On recale donc la feuille
+ * sur `window.visualViewport`. Choix local plutôt que `interactive-widget=
+ * resizes-content` dans la meta viewport, qui ferait remonter la barre
+ * d'onglets et le bouton « + » au-dessus du clavier dans tous les formulaires.
+ */
+function useVisualViewportBox(): CSSProperties | undefined {
+  const [box, setBox] = useState<CSSProperties>();
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setBox({ top: vv.offsetTop, height: vv.height, bottom: "auto" });
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+  return box;
+}
+
 /** Feuille de sélection d'une recette pour un créneau (recherche incluse). */
 function RecipePicker({
   recipes,
@@ -259,6 +286,7 @@ function RecipePicker({
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
+  const viewportBox = useVisualViewportBox();
   const filtered = recipes.filter((r) =>
     r.title.toLowerCase().includes(search.trim().toLowerCase()),
   );
@@ -269,6 +297,7 @@ function RecipePicker({
       role="dialog"
       aria-modal="true"
       aria-label="Choisir une recette"
+      style={viewportBox}
       onClick={onClose}
     >
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
