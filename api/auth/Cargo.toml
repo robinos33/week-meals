@@ -31,6 +31,10 @@ webauthn-rs = { version = "0.5.5", features = [
     "conditional-ui",
     "danger-allow-state-serialisation",
 ] }
+# Pour `ResidentKeyRequirement`, absent du prelude de `webauthn-rs` : on force
+# une passkey découvrable dans les options d'enrôlement (voir `enroll_start`).
+# Même version que celle tirée par `webauthn-rs`.
+webauthn-rs-proto = "0.5.5"
 tracing = "0.1"
 # 0.14 pour rester aligné sur `tower-sessions-sqlx-store` (store SQLite).
 tower-sessions = "0.14"

@@ -34,6 +34,7 @@ use webauthn_rs::prelude::{
     PasskeyRegistration, PublicKeyCredential, RegisterPublicKeyCredential,
     RequestChallengeResponse, Url, Webauthn, WebauthnBuilder,
 };
+use webauthn_rs_proto::ResidentKeyRequirement;
 
 /// Ré-export du parseur d'URL de `webauthn-rs`, pour que le `server` déduise le
 /// `rp_id` de l'origine sans dépendre directement d'`url`.
@@ -316,10 +317,11 @@ async fn enroll_start(
         None => (Uuid::new_v4(), username_from_label(&label), true),
     };
 
-    let (challenge, reg) = state
+    let (mut challenge, reg) = state
         .webauthn
         .start_passkey_registration(user_id, &username, &username, None)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    require_discoverable(&mut challenge);
 
     let ceremony = EnrollCeremony {
         reg,
@@ -622,6 +624,26 @@ async fn update_household_settings(
     Ok(Json(HouseholdSettingsView {
         week_start_day: day.value(),
     }))
+}
+
+/// Exige une passkey **découvrable** (`residentKey: "required"`).
+///
+/// `start_passkey_registration` envoie `residentKey: "discouraged"`. iOS crée
+/// quand même une passkey iCloud découvrable, mais Android, lui, obéit : il
+/// produit une clé non découvrable, hors du Gestionnaire de mots de passe
+/// Google. Or le login (`login_start`) est découvrable, sans `allowCredentials`
+/// : Android répond alors « Aucune clé d'accès disponible » et il faut
+/// réenrôler l'appareil à chaque expiration de session.
+///
+/// On ne retouche que les options envoyées au navigateur : l'état de cérémonie
+/// (`PasskeyRegistration`) ignore cette exigence à la validation, donc rien à
+/// y changer. On évite ainsi la feature `resident-key-support`, qui rejette les
+/// passkeys synchronisées (cf. `Cargo.toml`).
+fn require_discoverable(challenge: &mut CreationChallengeResponse) {
+    if let Some(selection) = challenge.public_key.authenticator_selection.as_mut() {
+        selection.resident_key = Some(ResidentKeyRequirement::Required);
+        selection.require_resident_key = true;
+    }
 }
 
 /// Établit la session (anti-fixation : régénère l'identifiant) puis y insère
