@@ -244,7 +244,12 @@ pub fn app(pool: SqlitePool, session_store: SqliteStore, config: &Config) -> Rou
         .with_http_only(true)
         .with_same_site(config.same_site)
         .with_secure(config.secure_cookie)
-        .with_expiry(Expiry::OnInactivity(Duration::days(30)));
+        .with_expiry(Expiry::OnInactivity(Duration::days(30)))
+        // Sans ça, une session non modifiée n'est ni réécrite ni renvoyée en
+        // cookie : l'expiration reste figée 30 jours après le login, malgré
+        // `OnInactivity`. Coût : un UPSERT par requête authentifiée, négligeable
+        // pour un foyer.
+        .with_always_save(true);
 
     let cors = cors_layer(config);
 

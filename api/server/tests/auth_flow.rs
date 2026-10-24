@@ -190,3 +190,51 @@ async fn pairing_code_attempts_are_capped() {
 
     onboarding.close(household).await.unwrap();
 }
+
+/// L'expiration est glissante : toute requête portant une session la prolonge
+/// et renvoie le cookie, même sans modifier la session. Sans ça, l'utilisateur
+/// serait déconnecté 30 jours après son login, actif ou non.
+#[tokio::test]
+async fn session_expiry_slides_on_unmodified_requests() {
+    use axum::http::header::{COOKIE, SET_COOKIE};
+
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "locked");
+    let config = Config::from_env();
+    let router = app(pool.clone(), store, &config);
+
+    // Démarrer une cérémonie écrit en session : on récupère ainsi un cookie.
+    let start = router
+        .clone()
+        .oneshot(post_json("/api/auth/login/start", serde_json::json!(null)))
+        .await
+        .unwrap();
+    let cookie = start
+        .headers()
+        .get(SET_COOKIE)
+        .expect("cookie de session posé")
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+
+    // Requête qui ne touche pas la session : le cookie doit être renvoyé.
+    let request = Request::builder()
+        .uri("/api/auth/enroll/status")
+        .header(COOKIE, &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let response = router.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let refreshed = response
+        .headers()
+        .get(SET_COOKIE)
+        .expect("cookie rafraîchi")
+        .to_str()
+        .unwrap();
+    assert!(refreshed.contains("Max-Age="), "{refreshed}");
+}
