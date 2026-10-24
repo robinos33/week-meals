@@ -13,7 +13,7 @@ import "./auth.css";
  * Garde d'authentification (cf. ADR-0006). Interroge `/auth/me` :
  *  - en mode public (dev), l'API renvoie le foyer de démo → l'app s'affiche ;
  *  - authentifié → l'app s'affiche ;
- *  - sinon → écran « Continuer avec Face ID », complété d'un formulaire
+ *  - sinon → écran « Se connecter avec une clé d'accès », complété d'un formulaire
  *    d'enrôlement si une fenêtre est ouverte.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -98,7 +98,7 @@ function AuthScreen() {
         <p className="muted">Cette application est réservée aux appareils enrôlés.</p>
 
         <button className="btn btn--primary auth-card__cta" type="button" onClick={login} disabled={busy}>
-          Continuer avec Face ID
+          Se connecter avec une clé d'accès
         </button>
 
         {enrollStatus.data?.open ? (

@@ -218,7 +218,7 @@ parcours : rien ne disparaît jamais d'une liste de courses.
 
 ### Authentification par passkeys (cf. [ADR-0006](docs/adr/0006-auth-passkeys-appareils-enroles.md))
 
-L'accès se fait par **passkeys WebAuthn** : « Continuer avec Face ID », sans
+L'accès se fait par **passkeys WebAuthn** : « Se connecter avec une clé d'accès », sans
 mot de passe ni identifiant à saisir. Un appareil s'enrôle pendant une fenêtre
 ouverte au CLI, protégée par un code d'appairage à usage unique :
 

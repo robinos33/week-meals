@@ -112,7 +112,11 @@ async fn passkey_enroll_and_login_ceremonies() {
         .await
         .unwrap();
     assert_eq!(ok.status(), StatusCode::OK);
-    assert!(json_body(ok).await.get("publicKey").is_some());
+    // Passkey découvrable exigée : sans ça, Android crée une clé que le login
+    // découvrable ne retrouve pas (« Aucune clé d'accès disponible »).
+    let selection = &json_body(ok).await["publicKey"]["authenticatorSelection"];
+    assert_eq!(selection["residentKey"], serde_json::json!("required"));
+    assert_eq!(selection["requireResidentKey"], serde_json::json!(true));
 
     // La cérémonie d'authentification découvrable démarre sans identifiant.
     let login = router

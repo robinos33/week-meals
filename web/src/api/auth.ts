@@ -62,7 +62,7 @@ export async function enrollDevice(code: string, label: string): Promise<Identit
 }
 
 /**
- * « Continuer avec Face ID » : authentification découvrable, sans identifiant.
+ * « Se connecter avec une clé d'accès » : authentification découvrable, sans identifiant.
  * Le téléphone présente la passkey de son choix.
  *
  * On ne transmet **que** `challenge.publicKey` : le serveur renvoie aussi un
