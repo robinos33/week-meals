@@ -70,7 +70,7 @@ impl<'a> GetWeekHandler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::Slot;
+    use crate::domain::{Dish, Slot};
     use crate::testing::{date, InMemoryMealPlan};
     use kernel::RecipeId;
 
@@ -82,14 +82,14 @@ mod tests {
             household,
             date("2026-07-13"),
             Slot::Lunch,
-            RecipeId::new(),
+            Dish::Recipe(RecipeId::new()),
             2,
         ));
         plan.seed(PlannedMeal::new(
             household,
             date("2026-07-20"),
             Slot::Dinner,
-            RecipeId::new(),
+            Dish::Recipe(RecipeId::new()),
             2,
         ));
 

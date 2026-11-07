@@ -1,8 +1,9 @@
 /**
  * Types et hooks du calendrier (onglet Semaine).
  *
- * Suit le contrat de l'API `meal-plan` : entrées `(date, slot, recipe_id)` sur
- * une plage de dates. Les résumés de recettes viennent de `/recipes` (pour
+ * Suit le contrat de l'API `meal-plan` : entrées `(date, slot, recipe_id | label)`
+ * sur une plage de dates. Une entrée porte soit une recette, soit un libellé
+ * libre (« Restes », « Resto »…) qui n'ajoute rien à la liste de courses. Les résumés de recettes viennent de `/recipes` (pour
  * afficher photo + titre dans les créneaux remplis).
  */
 
@@ -16,10 +17,17 @@ export type MealSlot = "lunch" | "dinner";
 export interface MealPlanEntry {
   date: string; // ISO YYYY-MM-DD
   slot: MealSlot;
-  recipe_id: string;
+  /** Recette placée, ou `null` pour un repas libre. */
+  recipe_id: string | null;
+  /** Libellé du repas libre, ou `null` pour une recette. Peut manquer dans un
+   * cache hors-ligne antérieur au repas libre : tester avec `!= null`. */
+  label?: string | null;
   /** Nombre de convives pour ce créneau (met les courses à l'échelle). */
   servings: number;
 }
+
+/** Ce qu'on place sur un créneau : une recette, ou un repas libre. */
+export type Dish = { recipe_id: string } | { label: string };
 
 /** Résumé de recette utile aux créneaux (sous-ensemble de `RecipeView`). */
 export interface RecipeSummary {
@@ -49,22 +57,20 @@ export function useRecipeSummaries() {
   });
 }
 
-/** Place (ou remplace) une recette dans un créneau, avec son nombre de
- * convives (défaut 2). Sert aussi à changer les convives d'un créneau déjà
- * rempli : on renvoie le même `recipe_id` avec un nouveau `servings`. */
+/** Place (ou remplace) une recette ou un repas libre dans un créneau, avec
+ * son nombre de convives (défaut 2). Sert aussi à changer les convives d'un
+ * créneau déjà rempli : on renvoie le même `recipe_id` avec un nouveau
+ * `servings`. */
 export function useSetEntry() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (entry: {
-      date: string;
-      slot: MealSlot;
-      recipe_id: string;
-      servings?: number;
-    }) =>
-      api.put<void>(`/meal-plan/${entry.date}/${entry.slot}`, {
-        recipe_id: entry.recipe_id,
-        servings: entry.servings ?? 2,
-      }),
+    mutationFn: ({
+      date,
+      slot,
+      servings,
+      ...dish
+    }: { date: string; slot: MealSlot; servings?: number } & Dish) =>
+      api.put<void>(`/meal-plan/${date}/${slot}`, { ...dish, servings: servings ?? 2 }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["meal-plan"] }),
   });
 }

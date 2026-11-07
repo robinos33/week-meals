@@ -1,7 +1,8 @@
 //! Couche infrastructure de `meal-plan` : implémentation SQLx du
 //! [`MealPlanRepository`](crate::domain::MealPlanRepository).
 //!
-//! Requêtes runtime (aucune macro vérifiée à la compilation). Planifier une
+//! Requêtes runtime (aucune macro vérifiée à la compilation). Une case porte
+//! soit `recipe_id`, soit `label` (repas libre). Planifier une
 //! recette absente du foyer donne [`RepositoryError::NotFound`] ; les autres
 //! erreurs SQLx deviennent [`RepositoryError::Backend`].
 
@@ -10,7 +11,7 @@ use kernel::{HouseholdId, RecipeId, RepositoryError, DEFAULT_SERVINGS};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::domain::{MealPlanRepository, PlannedMeal, Slot};
+use crate::domain::{Dish, FreeLabel, MealPlanRepository, PlannedMeal, Slot};
 
 /// Traduit une erreur SQLx en erreur de repository agnostique.
 ///
@@ -27,7 +28,8 @@ fn backend(err: sqlx::Error) -> RepositoryError {
 struct MealRow {
     meal_date: NaiveDate,
     slot: String,
-    recipe_id: Uuid,
+    recipe_id: Option<Uuid>,
+    label: Option<String>,
     servings: i32,
 }
 
@@ -42,11 +44,23 @@ impl MealRow {
             .ok()
             .filter(|&s| s > 0)
             .unwrap_or(DEFAULT_SERVINGS);
+        // Le check XOR de la table garantit exactement l'un des deux.
+        let dish = match (self.recipe_id, self.label) {
+            (Some(recipe_id), None) => Dish::Recipe(RecipeId::from(recipe_id)),
+            (None, Some(label)) => Dish::Free(FreeLabel::parse(&label).ok_or_else(|| {
+                RepositoryError::Backend(format!("invalid stored label: {label:?}"))
+            })?),
+            _ => {
+                return Err(RepositoryError::Backend(
+                    "stored meal must have exactly one of recipe_id / label".to_owned(),
+                ))
+            }
+        };
         Ok(PlannedMeal::new(
             household_id,
             self.meal_date,
             slot,
-            RecipeId::from(self.recipe_id),
+            dish,
             servings,
         ))
     }
@@ -94,19 +108,23 @@ impl MealPlanRepository for SqlxMealPlanRepository {
         // `counted_at` (garde du compteur « cuisiné X fois », #58) est remis à
         // zéro quand la recette du créneau **change** : la nouvelle recette
         // pourra être comptée à la prochaine génération. Reposer la même recette
-        // n'y touche pas — sinon on la recompterait à tort.
-        if !self
-            .recipe_belongs(meal.household_id, meal.recipe_id)
-            .await?
-        {
-            return Err(RepositoryError::NotFound);
-        }
+        // n'y touche pas — sinon on la recompterait à tort. Un repas libre n'a
+        // pas de recette (`recipe_id` NULL) : `is not` compare bien les NULL.
+        let (recipe_id, label) = match &meal.dish {
+            Dish::Recipe(recipe_id) => {
+                if !self.recipe_belongs(meal.household_id, *recipe_id).await? {
+                    return Err(RepositoryError::NotFound);
+                }
+                (Some(recipe_id.as_uuid()), None)
+            }
+            Dish::Free(label) => (None, Some(label.as_str())),
+        };
         sqlx::query(
-            "insert into meal_plan (household_id, meal_date, slot, recipe_id, servings) \
-             values (?, ?, ?, ?, ?) \
+            "insert into meal_plan (household_id, meal_date, slot, recipe_id, label, servings) \
+             values (?, ?, ?, ?, ?, ?) \
              on conflict (household_id, meal_date, slot) \
-             do update set recipe_id = excluded.recipe_id, servings = excluded.servings, \
-                 updated_at = datetime('now'), \
+             do update set recipe_id = excluded.recipe_id, label = excluded.label, \
+                 servings = excluded.servings, updated_at = datetime('now'), \
                  counted_at = case \
                      when meal_plan.recipe_id is not excluded.recipe_id \
                      then null else meal_plan.counted_at end",
@@ -114,7 +132,8 @@ impl MealPlanRepository for SqlxMealPlanRepository {
         .bind(meal.household_id.as_uuid())
         .bind(meal.date)
         .bind(meal.slot.as_str())
-        .bind(meal.recipe_id.as_uuid())
+        .bind(recipe_id)
+        .bind(label)
         .bind(i32::try_from(meal.servings).unwrap_or(i32::MAX))
         .execute(&self.pool)
         .await
@@ -151,7 +170,7 @@ impl MealPlanRepository for SqlxMealPlanRepository {
         end: NaiveDate,
     ) -> Result<Vec<PlannedMeal>, RepositoryError> {
         let rows: Vec<MealRow> = sqlx::query_as(
-            "select meal_date, slot, recipe_id, servings from meal_plan \
+            "select meal_date, slot, recipe_id, label, servings from meal_plan \
              where household_id = ? and meal_date between ? and ? \
              order by meal_date, slot",
         )

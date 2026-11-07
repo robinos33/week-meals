@@ -255,6 +255,21 @@
   text-decoration: none;
 }
 
+/* Repas libre : pas de sélecteur de personnes, on cale le contenu en haut
+   pour aligner « Midi / Soir » sur le créneau voisin. */
+.slot--free {
+  justify-content: flex-start;
+}
+
+/* Le bouton d'édition d'un repas libre reprend la mise en page du lien. */
+button.slot__open {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+
 .slot__thumb {
   flex: 0 0 auto;
   width: 34px;
@@ -386,6 +401,16 @@
   color: var(--color-text);
   text-align: left;
   font-size: 0.95rem;
+}
+
+.picker-row--free {
+  border-style: dashed;
+}
+
+.picker-row__hint {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-muted);
 }
 
 /* --- Liste de courses ----------------------------------------------------- */

@@ -505,3 +505,35 @@ async fn replacing_a_slot_makes_the_new_recipe_countable_again() {
     generate(&router, "2026-07-13", "2026-07-19").await;
     assert_eq!(cooked_count(&router, &tarte).await, 1);
 }
+
+#[tokio::test]
+async fn a_free_meal_adds_nothing_to_the_list() {
+    let db = common::temp_database().await;
+    let pool = db.pool.clone();
+    let store = init_session_store(&pool).await.expect("store de sessions");
+    std::env::set_var("AUTH_MODE", "disabled");
+    let config = Config::from_env();
+    let router = app(pool, store, &config);
+
+    let ratatouille = create_recipe(&router, "Ratatouille").await;
+    plan(&router, "2026-07-13", "dinner", &ratatouille).await;
+    // Repas libre : un libellé, sans recette ni ingrédient.
+    let response = router
+        .clone()
+        .oneshot(json_request(
+            "PUT",
+            "/api/meal-plan/2026-07-14/lunch",
+            &serde_json::json!({ "label": "Restes" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    // Seule la ratatouille alimente la liste, et le compteur ne bouge que pour
+    // elle : le créneau libre ne casse ni la génération ni le comptage.
+    let items = generate(&router, "2026-07-13", "2026-07-19").await;
+    let items = items.as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["amount"], 600.0);
+    assert_eq!(cooked_count(&router, &ratatouille).await, 1);
+}

@@ -4,12 +4,15 @@
 //! | Méthode | Route                     | Use case                 |
 //! |---------|---------------------------|--------------------------|
 //! | GET     | `/meal-plan?from&to`      | lire la semaine          |
-//! | PUT     | `/meal-plan/{date}/{slot}`| placer une recette       |
+//! | PUT     | `/meal-plan/{date}/{slot}`| placer un plat           |
 //! | DELETE  | `/meal-plan/{date}/{slot}`| vider le créneau         |
 //!
-//! `date` est au format ISO `YYYY-MM-DD`, `slot` vaut `lunch` ou `dinner`. La
-//! semaine renvoie les créneaux occupés (recette par identifiant) ; le front
-//! résout le détail des recettes depuis sa grille déjà chargée.
+//! `date` est au format ISO `YYYY-MM-DD`, `slot` vaut `lunch` ou `dinner`. Le
+//! corps du PUT porte **soit** `recipe_id` (recette du foyer), **soit** `label`
+//! (repas libre : simple texte, rien n'entre dans la liste de courses) ; les
+//! deux à la fois, ou aucun, donnent 422. La semaine renvoie les créneaux
+//! occupés avec `recipe_id` ou `label` (l'autre à `null`) ; le front résout le
+//! détail des recettes depuis sa grille déjà chargée.
 
 use std::sync::Arc;
 
@@ -29,7 +32,7 @@ use crate::application::commands::{
     PlaceMealResponse,
 };
 use crate::application::queries::{GetWeekHandler, GetWeekQuery, GetWeekResponse, MAX_RANGE_DAYS};
-use crate::domain::{MealPlanRepository, PlannedMeal, Slot};
+use crate::domain::{Dish, FreeLabel, MealPlanRepository, PlannedMeal, Slot, FREE_LABEL_MAX_CHARS};
 
 /// État injecté dans les routes du calendrier.
 #[derive(Clone)]
@@ -63,10 +66,13 @@ fn default_servings() -> u32 {
     DEFAULT_SERVINGS
 }
 
-/// Corps du placement d'une recette sur un créneau.
+/// Corps du placement d'un plat sur un créneau : `recipe_id` **ou** `label`.
 #[derive(Debug, Deserialize)]
 struct PlaceBody {
-    recipe_id: Uuid,
+    #[serde(default)]
+    recipe_id: Option<Uuid>,
+    #[serde(default)]
+    label: Option<String>,
     #[serde(default = "default_servings")]
     servings: u32,
 }
@@ -76,18 +82,43 @@ struct PlaceBody {
 struct PlannedMealView {
     date: NaiveDate,
     slot: &'static str,
-    recipe_id: Uuid,
+    /// Recette placée, ou `null` pour un repas libre.
+    recipe_id: Option<Uuid>,
+    /// Libellé du repas libre, ou `null` pour une recette.
+    label: Option<String>,
     servings: u32,
 }
 
 impl From<PlannedMeal> for PlannedMealView {
     fn from(meal: PlannedMeal) -> Self {
+        let (recipe_id, label) = match meal.dish {
+            Dish::Recipe(id) => (Some(id.as_uuid()), None),
+            Dish::Free(label) => (None, Some(label.as_str().to_owned())),
+        };
         Self {
             date: meal.date,
             slot: meal.slot.as_str(),
-            recipe_id: meal.recipe_id.as_uuid(),
+            recipe_id,
+            label,
             servings: meal.servings,
         }
+    }
+}
+
+/// Interprète le plat du corps : exactement un de `recipe_id` / `label`.
+fn parse_dish(body: &PlaceBody) -> Result<Dish, (StatusCode, String)> {
+    match (body.recipe_id, body.label.as_deref()) {
+        (Some(id), None) => Ok(Dish::Recipe(RecipeId::from(id))),
+        (None, Some(raw)) => FreeLabel::parse(raw).map(Dish::Free).ok_or_else(|| {
+            (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("le libellé doit faire entre 1 et {FREE_LABEL_MAX_CHARS} caractères"),
+            )
+        }),
+        _ => Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "renseigner soit `recipe_id`, soit `label`".to_owned(),
+        )),
     }
 }
 
@@ -125,7 +156,7 @@ async fn week(
     }
 }
 
-/// `PUT /meal-plan/{date}/{slot}` — place une recette sur le créneau.
+/// `PUT /meal-plan/{date}/{slot}` — place un plat (recette ou repas libre).
 async fn place(
     user: AuthUser,
     State(state): State<MealPlanState>,
@@ -136,12 +167,16 @@ async fn place(
         Ok(slot) => slot,
         Err(status) => return status.into_response(),
     };
+    let dish = match parse_dish(&body) {
+        Ok(dish) => dish,
+        Err(rejection) => return rejection.into_response(),
+    };
     let response = PlaceMealHandler::new(state.plan.as_ref())
         .handle(PlaceMealCommand {
             household_id: user.household_id(),
             date,
             slot,
-            recipe_id: RecipeId::from(body.recipe_id),
+            dish,
             servings: body.servings,
         })
         .await;

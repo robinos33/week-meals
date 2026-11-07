@@ -15,6 +15,7 @@ import {
   useRecipeSummaries,
   useSetEntry,
   useWeekPlan,
+  type Dish,
   type MealPlanEntry,
   type MealSlot,
   type RecipeSummary,
@@ -78,8 +79,13 @@ export function WeekScreen() {
   const generateList = useGenerateList();
   const navigate = useNavigate();
 
-  // Créneau en cours de remplissage (picker ouvert), ou `null`.
-  const [picking, setPicking] = useState<{ date: string; slot: MealSlot } | null>(null);
+  // Créneau en cours de remplissage (picker ouvert), ou `null`. `label` :
+  // repas libre en cours d'édition, pré-rempli dans la recherche.
+  const [picking, setPicking] = useState<{
+    date: string;
+    slot: MealSlot;
+    label?: string;
+  } | null>(null);
 
   const recipesById = useMemo(() => {
     const map = new Map<string, RecipeSummary>();
@@ -93,11 +99,11 @@ export function WeekScreen() {
     return map;
   }, [plan.data]);
 
-  function choose(recipeId: string) {
+  function choose(dish: Dish) {
     if (!picking) return;
     // Un créneau tout juste rempli l'est pour 2 personnes par défaut ; ajustable
     // ensuite depuis le créneau.
-    setEntry.mutate({ ...picking, recipe_id: recipeId, servings: 2 });
+    setEntry.mutate({ date: picking.date, slot: picking.slot, ...dish, servings: 2 });
     setPicking(null);
   }
 
@@ -161,13 +167,45 @@ export function WeekScreen() {
           <div className="week-day__slots">
             {SLOTS.map(({ slot, label }) => {
               const entry = planBySlot.get(`${day.date}|${slot}`);
-              const recipe = entry ? recipesById.get(entry.recipe_id) : undefined;
-              if (entry) {
+              if (entry?.label != null) {
+                // Repas libre : juste un libellé, sans recette ni convives (il
+                // n'alimente pas la liste). Toucher le libellé le modifie.
+                const freeLabel = entry.label;
+                return (
+                  <div className="slot slot--filled slot--free" key={slot}>
+                    <span className="slot__label">{label}</span>
+                    <div className="slot__recipe">
+                      <button
+                        className="slot__open"
+                        type="button"
+                        aria-label={`Modifier ${freeLabel}`}
+                        onClick={() => setPicking({ date: day.date, slot, label: freeLabel })}
+                      >
+                        <div className="slot__thumb" aria-hidden="true">
+                          ✏️
+                        </div>
+                        <span className="slot__title">{freeLabel}</span>
+                      </button>
+                      <button
+                        className="slot__remove"
+                        type="button"
+                        aria-label="Retirer du créneau"
+                        onClick={() => clearEntry.mutate({ date: day.date, slot })}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+              const recipe = entry?.recipe_id ? recipesById.get(entry.recipe_id) : undefined;
+              if (entry?.recipe_id) {
+                const recipeId = entry.recipe_id;
                 const setServings = (servings: number) =>
                   setEntry.mutate({
                     date: day.date,
                     slot,
-                    recipe_id: entry.recipe_id,
+                    recipe_id: recipeId,
                     servings,
                   });
                 return (
@@ -177,7 +215,7 @@ export function WeekScreen() {
                       <Link
                         className="slot__open"
                         to="/recipes/$recipeId"
-                        params={{ recipeId: entry.recipe_id }}
+                        params={{ recipeId }}
                         aria-label={`Ouvrir ${recipe?.title ?? "la recette"}`}
                       >
                         <div className="slot__thumb">
@@ -244,6 +282,7 @@ export function WeekScreen() {
       {picking && (
         <RecipePicker
           recipes={recipesQuery.data ?? []}
+          initialSearch={picking.label}
           loading={recipesQuery.isLoading}
           onPick={choose}
           onClose={() => setPicking(null)}
@@ -299,23 +338,32 @@ function useVisualViewportBox(): CSSProperties | undefined {
   return box;
 }
 
-/** Feuille de sélection d'une recette pour un créneau (recherche incluse). */
+/** Longueur maximale d'un libellé de repas libre (alignée sur l'API). */
+const FREE_LABEL_MAX = 80;
+
+/**
+ * Feuille de sélection d'une recette pour un créneau (recherche incluse).
+ *
+ * Le texte saisi sert aussi de **repas libre** : une ligne « ✏️ « … » » en tête
+ * de liste le pose tel quel, sans créer de recette ni toucher aux courses.
+ */
 function RecipePicker({
   recipes,
   loading,
+  initialSearch,
   onPick,
   onClose,
 }: {
   recipes: RecipeSummary[];
   loading: boolean;
-  onPick: (recipeId: string) => void;
+  initialSearch?: string;
+  onPick: (dish: Dish) => void;
   onClose: () => void;
 }) {
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch ?? "");
   const viewportBox = useVisualViewportBox();
-  const filtered = recipes.filter((r) =>
-    r.title.toLowerCase().includes(search.trim().toLowerCase()),
-  );
+  const query = search.trim();
+  const filtered = recipes.filter((r) => r.title.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <div
@@ -337,24 +385,42 @@ function RecipePicker({
         <input
           className="input"
           type="search"
-          placeholder="Rechercher…"
+          placeholder="Rechercher, ou noter un repas libre…"
+          maxLength={FREE_LABEL_MAX}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Rechercher une recette"
           autoFocus
         />
         <div className="sheet__list">
+          {query && (
+            <button
+              className="picker-row picker-row--free"
+              type="button"
+              onClick={() => onPick({ label: query })}
+            >
+              <div className="slot__thumb" aria-hidden="true">
+                ✏️
+              </div>
+              <span>
+                Repas libre : « {query} »
+                <span className="picker-row__hint">Rien n'est ajouté aux courses</span>
+              </span>
+            </button>
+          )}
           {loading ? (
             <p className="muted">Chargement…</p>
           ) : filtered.length === 0 ? (
-            <p className="muted">Aucune recette. Ajoutez-en dans l'onglet Recettes.</p>
+            query ? null : (
+              <p className="muted">Aucune recette. Ajoutez-en dans l'onglet Recettes.</p>
+            )
           ) : (
             filtered.map((recipe) => (
               <button
                 className="picker-row"
                 type="button"
                 key={recipe.id}
-                onClick={() => onPick(recipe.id)}
+                onClick={() => onPick({ recipe_id: recipe.id })}
               >
                 <div className="slot__thumb">
                   {recipe.photo ? (
