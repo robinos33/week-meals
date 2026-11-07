@@ -134,6 +134,59 @@ async fn meal_plan_flow() {
         .unwrap();
     assert_eq!(refused.status(), StatusCode::NOT_FOUND);
 
+    // Repas libre : un simple libellé, sans recette. Relu avec `label` et un
+    // `recipe_id` nul ; les espaces de bord sont retirés.
+    let free = router
+        .clone()
+        .oneshot(json_request(
+            "PUT",
+            "/api/meal-plan/2026-07-15/lunch",
+            &serde_json::json!({ "label": "  Restes  " }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(free.status(), StatusCode::NO_CONTENT);
+    let week = get_week(&router, "2026-07-15", "2026-07-15").await;
+    assert_eq!(week[0]["label"], "Restes");
+    assert!(week[0]["recipe_id"].is_null());
+
+    // Un créneau libre redevient une recette par simple upsert.
+    router
+        .clone()
+        .oneshot(json_request(
+            "PUT",
+            "/api/meal-plan/2026-07-15/lunch",
+            &serde_json::json!({ "recipe_id": recipe_id }),
+        ))
+        .await
+        .unwrap();
+    let week = get_week(&router, "2026-07-15", "2026-07-15").await;
+    assert_eq!(week[0]["recipe_id"], recipe_id);
+    assert!(week[0]["label"].is_null());
+
+    // Ni l'un ni l'autre, les deux à la fois, ou un libellé blanc : 422.
+    for body in [
+        serde_json::json!({}),
+        serde_json::json!({ "recipe_id": recipe_id, "label": "Restes" }),
+        serde_json::json!({ "label": "   " }),
+        serde_json::json!({ "label": "x".repeat(81) }),
+    ] {
+        let rejected = router
+            .clone()
+            .oneshot(json_request(
+                "PUT",
+                "/api/meal-plan/2026-07-16/lunch",
+                &body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            rejected.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{body}"
+        );
+    }
+
     // Une plage démesurée est refusée plutôt que de tout ramener.
     let too_wide = router
         .clone()

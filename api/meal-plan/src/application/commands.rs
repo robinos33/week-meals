@@ -1,14 +1,15 @@
-//! Use cases d'écriture du calendrier : placer une recette sur un créneau,
+//! Use cases d'écriture du calendrier : placer un plat (recette ou repas libre)
+//! sur un créneau,
 //! vider un créneau. Scopés au foyer.
 
 use chrono::NaiveDate;
-use kernel::{HouseholdId, RecipeId, RepositoryError};
+use kernel::{HouseholdId, RepositoryError};
 
-use crate::domain::{MealPlanRepository, PlannedMeal, Slot};
+use crate::domain::{Dish, MealPlanRepository, PlannedMeal, Slot};
 
 // --- Place ----------------------------------------------------------------
 
-/// Command : placer (ou remplacer) une recette sur un créneau.
+/// Command : placer (ou remplacer) un plat sur un créneau.
 #[derive(Debug, Clone)]
 pub struct PlaceMealCommand {
     /// Foyer propriétaire (scope).
@@ -17,8 +18,8 @@ pub struct PlaceMealCommand {
     pub date: NaiveDate,
     /// Créneau.
     pub slot: Slot,
-    /// Recette à placer.
-    pub recipe_id: RecipeId,
+    /// Plat à placer : recette ou repas libre.
+    pub dish: Dish,
     /// Nombre de convives pour ce créneau (base de la mise à l'échelle des
     /// courses). Défaut applicatif : `kernel::DEFAULT_SERVINGS`.
     pub servings: u32,
@@ -27,7 +28,7 @@ pub struct PlaceMealCommand {
 /// Résultat d'un placement.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PlaceMealResponse {
-    /// Recette placée sur le créneau.
+    /// Plat placé sur le créneau.
     Placed,
     /// La recette n'existe pas dans le foyer.
     RecipeNotFound,
@@ -53,7 +54,7 @@ impl<'a> PlaceMealHandler<'a> {
             command.household_id,
             command.date,
             command.slot,
-            command.recipe_id,
+            command.dish,
             command.servings,
         );
         match self.plan.set(&meal).await {
@@ -117,6 +118,7 @@ impl<'a> ClearMealHandler<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::FreeLabel;
     use crate::testing::{date, InMemoryMealPlan};
     use kernel::RecipeId;
 
@@ -131,7 +133,7 @@ mod tests {
                 household_id: household,
                 date: date("2026-07-13"),
                 slot: Slot::Dinner,
-                recipe_id: recipe,
+                dish: Dish::Recipe(recipe),
                 servings: 2,
             })
             .await;
@@ -160,7 +162,7 @@ mod tests {
                 household_id: household,
                 date: date("2026-07-13"),
                 slot: Slot::Lunch,
-                recipe_id: RecipeId::new(),
+                dish: Dish::Recipe(RecipeId::new()),
                 servings: 2,
             })
             .await;
@@ -170,12 +172,36 @@ mod tests {
                 household_id: household,
                 date: date("2026-07-13"),
                 slot: Slot::Lunch,
-                recipe_id: second,
+                dish: Dish::Recipe(second),
                 servings: 2,
             })
             .await;
 
         assert_eq!(plan.count(), 1);
+    }
+
+    #[tokio::test]
+    async fn free_meal_replaces_a_recipe() {
+        let plan = InMemoryMealPlan::default();
+        let household = HouseholdId::new();
+        let handler = PlaceMealHandler::new(&plan);
+        let slot = |dish| PlaceMealCommand {
+            household_id: household,
+            date: date("2026-07-13"),
+            slot: Slot::Dinner,
+            dish,
+            servings: 2,
+        };
+
+        handler.handle(slot(Dish::Recipe(RecipeId::new()))).await;
+        let free = Dish::Free(FreeLabel::parse("Restes").unwrap());
+        assert_eq!(
+            handler.handle(slot(free.clone())).await,
+            PlaceMealResponse::Placed
+        );
+
+        assert_eq!(plan.count(), 1);
+        assert_eq!(plan.only().dish, free);
     }
 
     #[tokio::test]

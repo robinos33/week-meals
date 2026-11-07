@@ -26,6 +26,14 @@ impl InMemoryMealPlan {
         self.meals.lock().unwrap().push(meal);
     }
 
+    /// L'unique case occupée (panique s'il n'y en a pas exactement une).
+    #[must_use]
+    pub fn only(&self) -> PlannedMeal {
+        let meals = self.meals.lock().unwrap();
+        assert_eq!(meals.len(), 1, "une seule case attendue");
+        meals[0].clone()
+    }
+
     /// Nombre de cases occupées.
     #[must_use]
     pub fn count(&self) -> usize {

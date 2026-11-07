@@ -20,6 +20,8 @@ grammages en unités achetables : `600 g de courgettes` devient `3 courgettes`.
 - 📖 **Recettes** — CRUD complet : photo, titre, temps de préparation/cuisson,
   ingrédients (quantité + unité : g, kg, mL, L ou pièces) et étapes de préparation
 - 📅 **Semaine** — calendrier 7 jours × 2 créneaux (midi/soir), on y place les recettes
+  ou un **repas libre** (« Restes », « Resto »…) : un simple libellé, sans
+  recette à créer ni rien d'ajouté à la liste de courses
 - 🛒 **Liste de courses** — générée depuis une plage de jours du calendrier,
   éditable, cochable en magasin (UX inspirée de Google Keep), **fonctionne hors-ligne**
 - 🏬 **Tri par magasin** — la liste se découpe en rayons, dans l'ordre de visite
